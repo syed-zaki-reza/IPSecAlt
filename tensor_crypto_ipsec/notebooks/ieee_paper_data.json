@@ -1,0 +1,70 @@
+{
+  "system_overview": {
+    "tensor_dimensions": [
+      8,
+      8
+    ],
+    "device_id": "f15e096d5d98e5d5",
+    "encryption_layers": 4,
+    "ai_model_parameters": 63488,
+    "dictionary_size": 512
+  },
+  "performance_metrics": {
+    "16": {
+      "encrypt_ops_sec": 12736.256528604397,
+      "decrypt_ops_sec": 13126.479516790285,
+      "encrypt_time_ms": 0.07851600646972656,
+      "decrypt_time_ms": 0.07618188858032227
+    },
+    "32": {
+      "encrypt_ops_sec": 12950.698898004428,
+      "decrypt_ops_sec": 13144.373932527931,
+      "encrypt_time_ms": 0.07721590995788574,
+      "decrypt_time_ms": 0.07607817649841309
+    },
+    "64": {
+      "encrypt_ops_sec": 13062.867892091215,
+      "decrypt_ops_sec": 13055.874094964172,
+      "encrypt_time_ms": 0.0765528678894043,
+      "decrypt_time_ms": 0.07659387588500977
+    }
+  },
+  "security_properties": {
+    "quantum_resistant": true,
+    "forward_secrecy": true,
+    "key_uniqueness": true,
+    "encryption_layers": [
+      "tensor_xor",
+      "ai_logic",
+      "dictionary",
+      "nonlinear"
+    ],
+    "key_rotation_capability": true
+  },
+  "system_metrics": {
+    "sessions_created": 18,
+    "packets_encrypted": 3004,
+    "packets_decrypted": 3004,
+    "key_rotations": 1,
+    "errors": 0
+  },
+  "comparison_with_existing": {
+    "rsa_2048": {
+      "quantum_vulnerable": true,
+      "key_size_bits": 2048
+    },
+    "aes_256": {
+      "quantum_vulnerable": false,
+      "key_size_bits": 256
+    },
+    "ipsec": {
+      "quantum_vulnerable": true,
+      "relies_on_rsa": true
+    },
+    "tensor_crypto": {
+      "quantum_vulnerable": false,
+      "dynamic_keys": true,
+      "ai_enhanced": true
+    }
+  }
+}

@@ -1,0 +1,25 @@
+tensor_crypto_ipsec/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── setup.py
+├── config/
+├── docs/
+├── src/
+│   ├── __init__.py
+│   ├── tensor_engine.py         # Implements tensor-based encryption core
+│   ├── ai_logic.py              # AI model for dynamic crypto logic generation
+│   ├── key_management.py        # (Optional) For additional key lifecycle management
+│   ├── dictionary_manager.py    # Secure dictionary and forward secrecy management
+│   ├── router_interface.py      # Network protocol and router integration simulation
+│   └── utils.py                 # Utility functions, logging, helpers
+├── tests/
+│   ├── test_tensor_engine.py
+│   ├── test_ai_logic.py
+│   └── test_key_management.py
+└── notebooks/
+    ├── 01_tensor_encryption_core.ipynb
+    ├── 02_ai_logic_generation.ipynb
+    ├── 03_dictionary_management.ipynb
+    ├── 04_router_integration_simulation.ipynb
+    └── 05_complete_system_integration.ipynb
