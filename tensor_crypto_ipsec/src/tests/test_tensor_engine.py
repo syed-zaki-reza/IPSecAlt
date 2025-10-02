@@ -1,547 +1,399 @@
 """
-test_tensor_engine.py
-Comprehensive test suite for the tensor encryption engine
-
-Tests cover:
-- Basic encryption/decryption functionality
-- Security properties and edge cases
-- Performance and reliability
-- Integration scenarios
+Tests for tensor engine operations.
+Tests matrix operations, game logic, and cryptographic tensor functions.
 """
 
-import unittest
+import pytest
 import numpy as np
-import hashlib
-import os
-import tempfile
-import time
-from unittest.mock import patch, MagicMock
-
-# Import the module to test
+from unittest.mock import Mock, patch, MagicMock
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+import os
 
-from tensor_engine import TensorEncryptionEngine
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from src.tensor_engine import TensorEngine
+from src.ai_logic import AIPlayer
 
 
-class TestTensorEncryptionEngine(unittest.TestCase):
-    """Test suite for TensorEncryptionEngine class"""
+class TestTensorEngine:
+    """Test suite for tensor engine core functionality."""
     
-    def setUp(self):
-        """Set up test environment before each test"""
-        self.engine = TensorEncryptionEngine(
-            tensor_dimensions=(4, 4),
-            security_level='standard'
-        )
-        self.test_data = b"Hello, this is a test message for encryption!"
-        self.session_id = "test_session_123"
-        self.device_fingerprint = "test_device_abc"
-    
-    def tearDown(self):
-        """Clean up after each test"""
-        # Clear transformation history
-        self.engine.transformation_history.clear()
-    
-    def test_initialization(self):
-        """Test engine initialization"""
-        self.assertEqual(self.engine.tensor_dims, (4, 4))
-        self.assertEqual(self.engine.tensor_size, 16)
-        self.assertEqual(self.engine.security_level, 'standard')
-        self.assertIsNotNone(self.engine.master_tensor)
-        self.assertEqual(self.engine.master_tensor.shape, (4, 4))
-    
-    def test_security_levels(self):
-        """Test different security levels"""
-        basic_engine = TensorEncryptionEngine(security_level='basic')
-        high_engine = TensorEncryptionEngine(security_level='high')
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        self.engine = TensorEngine()
         
-        # Check different parameters are set
-        self.assertLess(basic_engine.security_params['pbkdf2_iterations'],
-                       high_engine.security_params['pbkdf2_iterations'])
-        self.assertLess(basic_engine.security_params['nonlinear_layers'],
-                       high_engine.security_params['nonlinear_layers'])
-    
-    def test_master_tensor_generation(self):
-        """Test master tensor generation"""
-        master1 = self.engine._generate_master_tensor()
-        master2 = self.engine._generate_master_tensor()
+    def test_engine_initialization(self):
+        """Test tensor engine initialization."""
+        assert self.engine is not None
+        assert hasattr(self.engine, 'board_shape')
+        assert self.engine.board_shape == (6, 7)
         
-        # Master tensors should be different (cryptographically random)
-        self.assertFalse(np.array_equal(master1, master2))
+    def test_game_initialization(self):
+        """Test game state initialization."""
+        game_state = self.engine.initialize_game()
         
-        # But should have correct shape and type
-        self.assertEqual(master1.shape, self.engine.tensor_dims)
-        self.assertEqual(master1.dtype, self.engine.dtype)
-    
-    def test_session_tensor_generation(self):
-        """Test session tensor generation"""
-        tensor1 = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
+        assert 'board' in game_state
+        assert 'current_player' in game_state
+        assert 'game_over' in game_state
+        assert 'winner' in game_state
         
-        # Should have correct properties
-        self.assertEqual(tensor1.shape, self.engine.tensor_dims)
-        self.assertEqual(tensor1.dtype, self.engine.dtype)
+        board = game_state['board']
+        assert board.shape == (6, 7)
+        assert np.all(board == 0)  # Board should be empty
         
-        # Same parameters should generate same tensor (deterministic)
-        tensor2 = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        self.assertTrue(np.array_equal(tensor1, tensor2))
+    def test_valid_move_detection(self):
+        """Test detection of valid moves."""
+        board = np.zeros((6, 7), dtype=int)
         
-        # Different parameters should generate different tensors
-        tensor3 = self.engine.generate_session_tensor(
-            "different_session", self.device_fingerprint
-        )
-        self.assertFalse(np.array_equal(tensor1, tensor3))
-    
-    def test_basic_encryption_decryption(self):
-        """Test basic encryption and decryption"""
-        # Generate session tensor
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
+        # All columns should be valid in empty board
+        valid_moves = self.engine.get_valid_moves(board)
+        assert valid_moves == list(range(7))
         
-        # Encrypt data
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
-        
-        # Check encryption result
-        self.assertIsInstance(encrypted_data, bytes)
-        self.assertIsInstance(metadata, dict)
-        self.assertIn('nonce', metadata)
-        self.assertIn('original_length', metadata)
-        self.assertIn('tensor_hash', metadata)
-        
-        # Decrypt data
-        decrypted_data = self.engine.decrypt_data(
-            encrypted_data, session_tensor, metadata
-        )
-        
-        # Check decryption result
-        self.assertEqual(decrypted_data, self.test_data)
-    
-    def test_encryption_with_custom_nonce(self):
-        """Test encryption with custom nonce"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        custom_nonce = b"custom_nonce_16b"
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor, nonce=custom_nonce
-        )
-        
-        self.assertEqual(metadata['nonce'], custom_nonce)
-        
-        # Decryption should still work
-        decrypted_data = self.engine.decrypt_data(
-            encrypted_data, session_tensor, metadata
-        )
-        self.assertEqual(decrypted_data, self.test_data)
-        
-    def test_different_data_sizes(self):
-        """Test encryption/decryption with different data sizes"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        test_cases = [
-            b"Short",                    # Very short message
-            b"Medium length test message for encryption",  # Medium message
-            b"A" * 100,                 # Long message (will be truncated)
-            b"",                        # Empty message
-            b"\x00\x01\x02\x03\x04",   # Binary data
-        ]
-        
-        for test_data in test_cases:
-            with self.subTest(data_length=len(test_data)):
-                encrypted_data, metadata = self.engine.encrypt_data(
-                    test_data, session_tensor
-                )
-                decrypted_data = self.engine.decrypt_data(
-                    encrypted_data, session_tensor, metadata
-                )
-                
-                # For data larger than tensor size, it gets truncated
-                max_data_size = self.engine.tensor_size - 16 - 4  # nonce + length
-                expected_data = test_data[:max_data_size] if len(test_data) > max_data_size else test_data
-                self.assertEqual(decrypted_data, expected_data)
-    
-    def test_tensor_integrity_verification(self):
-        """Test tensor integrity verification"""
-        # Valid tensor
-        valid_tensor = np.random.randint(-128, 127, self.engine.tensor_dims, dtype=np.int8)
-        self.assertTrue(self.engine.verify_tensor_integrity(valid_tensor))
-        
-        # Invalid shape
-        invalid_shape = np.random.randint(-128, 127, (3, 3), dtype=np.int8)
-        self.assertFalse(self.engine.verify_tensor_integrity(invalid_shape))
-        
-        # Invalid dtype
-        invalid_dtype = np.random.randint(-128, 127, self.engine.tensor_dims, dtype=np.int16)
-        self.assertFalse(self.engine.verify_tensor_integrity(invalid_dtype))
-        
-        # Low entropy tensor (all same values)
-        low_entropy = np.full(self.engine.tensor_dims, 42, dtype=np.int8)
-        self.assertFalse(self.engine.verify_tensor_integrity(low_entropy))
-    
-    def test_wrong_key_decryption(self):
-        """Test that wrong key fails decryption"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        wrong_tensor = self.engine.generate_session_tensor(
-            "wrong_session", self.device_fingerprint
-        )
-        
-        # Encrypt with correct key
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
-        
-        # Try to decrypt with wrong key
-        with self.assertRaises(ValueError):
-            self.engine.decrypt_data(encrypted_data, wrong_tensor, metadata)
-    
-    def test_corrupted_metadata(self):
-        """Test handling of corrupted metadata"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
-        
-        # Corrupt tensor hash
-        corrupted_metadata = metadata.copy()
-        corrupted_metadata['tensor_hash'] = "invalid_hash"
-        
-        with self.assertRaises(ValueError):
-            self.engine.decrypt_data(encrypted_data, session_tensor, corrupted_metadata)
-    
-    def test_nonce_verification(self):
-        """Test nonce verification during decryption"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
-        
-        # Corrupt encrypted data (which contains nonce)
-        corrupted_data = bytearray(encrypted_data)
-        corrupted_data[0] = (corrupted_data[0] + 1) % 256  # Change first byte
-        
-        with self.assertRaises(ValueError):
-            self.engine.decrypt_data(bytes(corrupted_data), session_tensor, metadata)
-    
-    def test_additional_entropy(self):
-        """Test session tensor generation with additional entropy"""
-        additional_entropy = b"extra_random_data_12345"
-        
-        tensor1 = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint, additional_entropy
-        )
-        tensor2 = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint, additional_entropy
-        )
-        tensor3 = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint, b"different_entropy"
-        )
-        
-        # Same entropy should produce same tensor
-        self.assertTrue(np.array_equal(tensor1, tensor2))
-        
-        # Different entropy should produce different tensor
-        self.assertFalse(np.array_equal(tensor1, tensor3))
-    
-    def test_transformation_history(self):
-        """Test transformation history logging"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        initial_count = len(self.engine.transformation_history)
-        
-        # Perform encryption
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
-        
-        # Check history updated
-        self.assertEqual(len(self.engine.transformation_history), initial_count + 1)
-        self.assertEqual(self.engine.transformation_history[-1]['operation'], 'encrypt')
-        
-        # Perform decryption
-        decrypted_data = self.engine.decrypt_data(
-            encrypted_data, session_tensor, metadata
-        )
-        
-        # Check history updated again
-        self.assertEqual(len(self.engine.transformation_history), initial_count + 2)
-        self.assertEqual(self.engine.transformation_history[-1]['operation'], 'decrypt')
-    
-    def test_encryption_metrics(self):
-        """Test encryption metrics collection"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        # Perform several operations
-        for i in range(3):
-            encrypted_data, metadata = self.engine.encrypt_data(
-                f"Test message {i}".encode(), session_tensor
-            )
-            self.engine.decrypt_data(encrypted_data, session_tensor, metadata)
-        
-        metrics = self.engine.get_encryption_metrics()
-        
-        self.assertEqual(metrics['encrypt_operations'], 3)
-        self.assertEqual(metrics['decrypt_operations'], 3)
-        self.assertEqual(metrics['total_operations'], 6)
-        self.assertGreater(metrics['total_data_encrypted'], 0)
-        self.assertEqual(metrics['tensor_dimensions'], self.engine.tensor_dims)
-        self.assertEqual(metrics['security_level'], 'standard')
-    
-    def test_key_export_import(self):
-        """Test tensor key export and import functionality"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
-        )
-        
-        password = "test_password_123"
-        
-        # Export key
-        exported_data = self.engine.export_tensor_key(session_tensor, password)
-        self.assertIsInstance(exported_data, bytes)
-        self.assertGreater(len(exported_data), 0)
-        
-        # Import key
-        imported_tensor = self.engine.import_tensor_key(exported_data, password)
-        
-        # Verify imported key matches original
-        self.assertTrue(np.array_equal(session_tensor, imported_tensor))
-        
-        # Test wrong password fails
-        with self.assertRaises(Exception):
-            self.engine.import_tensor_key(exported_data, "wrong_password")
-    
-    def test_performance_benchmark(self):
-        """Test performance benchmarking functionality"""
-        # Run small benchmark
-        results = self.engine.benchmark_performance(num_iterations=10)
-        
-        # Check results structure
-        self.assertIn('iterations', results)
-        self.assertIn('encrypt_ops_per_sec', results)
-        self.assertIn('decrypt_ops_per_sec', results)
-        self.assertIn('encrypt_time_per_op_ms', results)
-        self.assertIn('decrypt_time_per_op_ms', results)
-        
-        # Check reasonable values
-        self.assertEqual(results['iterations'], 10)
-        self.assertGreater(results['encrypt_ops_per_sec'], 0)
-        self.assertGreater(results['decrypt_ops_per_sec'], 0)
-        self.assertGreater(results['encrypt_time_per_op_ms'], 0)
-        self.assertGreater(results['decrypt_time_per_op_ms'], 0)
-    
-    def test_bit_rotation(self):
-        """Test bit rotation utility function"""
-        # Test specific bit rotation cases
-        test_cases = [
-            (0b10000001, 1, 0b00000011),  # Rotate 129 left by 1 -> 3
-            (0b11110000, 4, 0b00001111),  # Rotate 240 left by 4 -> 15
-            (0, 3, 0),                    # Rotate 0 -> 0
-        ]
-        
-        for value, rotation, expected in test_cases:
-            # Convert to signed byte
-            signed_value = value if value < 128 else value - 256
-            signed_expected = expected if expected < 128 else expected - 256
+    def test_full_column_handling(self):
+        """Test handling of full columns."""
+        board = np.zeros((6, 7), dtype=int)
+        # Fill column 0
+        for row in range(6):
+            board[row, 0] = 1
             
-            result = self.engine._rotate_bits(signed_value, rotation)
-            self.assertEqual(result, signed_expected)
+        valid_moves = self.engine.get_valid_moves(board)
+        assert 0 not in valid_moves  # Full column should not be valid
+        
+    def test_move_application(self):
+        """Test applying moves to the board."""
+        board = np.zeros((6, 7), dtype=int)
+        
+        # Apply move to column 3
+        new_board, row_played = self.engine.apply_move(board, 3, 1)
+        
+        assert row_played == 5  # Should be bottom row
+        assert new_board[5, 3] == 1
+        assert np.sum(new_board) == 1  # Only one piece placed
+        
+    def test_stack_moves(self):
+        """Test stacking moves in the same column."""
+        board = np.zeros((6, 7), dtype=int)
+        
+        # Make two moves in column 2
+        board, row1 = self.engine.apply_move(board, 2, 1)
+        board, row2 = self.engine.apply_move(board, 2, 2)
+        
+        assert row1 == 5  # First move at bottom
+        assert row2 == 4  # Second move above first
+        assert board[5, 2] == 1
+        assert board[4, 2] == 2
+        
+    def test_win_detection_horizontal(self):
+        """Test horizontal win detection."""
+        board = np.zeros((6, 7), dtype=int)
+        # Create horizontal win for player 1
+        board[5, 0:4] = 1
+        
+        assert self.engine.check_win(board, 1) == True
+        assert self.engine.check_win(board, 2) == False
+        
+    def test_win_detection_vertical(self):
+        """Test vertical win detection."""
+        board = np.zeros((6, 7), dtype=int)
+        # Create vertical win for player 2
+        for i in range(4):
+            board[5-i, 3] = 2
+            
+        assert self.engine.check_win(board, 2) == True
+        assert self.engine.check_win(board, 1) == False
+        
+    def test_win_detection_diagonal(self):
+        """Test diagonal win detection."""
+        board = np.zeros((6, 7), dtype=int)
+        # Create diagonal win (bottom-left to top-right)
+        for i in range(4):
+            board[5-i, i] = 1
+            
+        assert self.engine.check_win(board, 1) == True
+        
+    def test_win_detection_anti_diagonal(self):
+        """Test anti-diagonal win detection."""
+        board = np.zeros((6, 7), dtype=int)
+        # Create anti-diagonal win (bottom-right to top-left)
+        for i in range(4):
+            board[5-i, 6-i] = 2
+            
+        assert self.engine.check_win(board, 2) == True
+        
+    def test_no_win_empty_board(self):
+        """Test win detection on empty board."""
+        board = np.zeros((6, 7), dtype=int)
+        assert self.engine.check_win(board, 1) == False
+        assert self.engine.check_win(board, 2) == False
+        
+    def test_draw_detection(self):
+        """Test draw condition detection."""
+        # Create a full board with no wins (alternating players)
+        board = np.zeros((6, 7), dtype=int)
+        for row in range(6):
+            for col in range(7):
+                # Alternate between players
+                board[row, col] = (row + col) % 2 + 1
+                
+        assert self.engine.check_draw(board) == True
+        
+    def test_not_draw_with_empty_spaces(self):
+        """Test draw detection with empty spaces."""
+        board = np.zeros((6, 7), dtype=int)
+        board[5, 0] = 1  # One piece, rest empty
+        assert self.engine.check_draw(board) == False
+        
+    def test_not_draw_with_win(self):
+        """Test draw detection when there's a win."""
+        board = np.zeros((6, 7), dtype=int)
+        board[5, 0:4] = 1  # Winning line
+        assert self.engine.check_draw(board) == False
+        
+    def test_game_state_update(self):
+        """Test complete game state update after move."""
+        game_state = self.engine.initialize_game()
+        
+        updated_state = self.engine.make_move(game_state, 3)
+        
+        assert updated_state['board'][5, 3] == 1  # Player 1's move
+        assert updated_state['current_player'] == 2  # Switch to player 2
+        assert updated_state['moves'] == [3]  # Recorded move
+        
+    def test_winning_move_detection(self):
+        """Test detection of winning moves."""
+        board = np.zeros((6, 7), dtype=int)
+        # Setup: player 1 has three in a row
+        board[5, 0:3] = 1
+        
+        # Column 3 should be winning move
+        is_winning = self.engine.is_winning_move(board, 3, 1)
+        assert is_winning == True
+        
+    def test_non_winning_move(self):
+        """Test detection of non-winning moves."""
+        board = np.zeros((6, 7), dtype=int)
+        board[5, 0] = 1  # Single piece
+        
+        # No move should be winning from this position
+        for col in range(7):
+            is_winning = self.engine.is_winning_move(board, col, 1)
+            assert is_winning == False
+
+
+class TestTensorOperations:
+    """Test suite for mathematical tensor operations."""
     
-    def test_tensor_product_operation(self):
-        """Test tensor product operations"""
-        tensor_a = np.array([[1, 2], [3, 4]], dtype=np.int8)
-        tensor_b = np.array([[5, 6], [7, 8]], dtype=np.int8)
+    def setup_method(self):
+        self.engine = TensorEngine()
         
-        result = self.engine._tensor_product_operation(tensor_a, tensor_b)
+    def test_tensor_creation(self):
+        """Test creation of game state tensors."""
+        board = np.zeros((6, 7), dtype=int)
+        board[5, 0] = 1
+        board[5, 1] = 2
         
-        # Check result properties
-        self.assertEqual(result.shape, tensor_a.shape)
-        self.assertEqual(result.dtype, np.int8)
+        tensor = self.engine.board_to_tensor(board)
         
-        # Result should be different from inputs
-        self.assertFalse(np.array_equal(result, tensor_a))
-        self.assertFalse(np.array_equal(result, tensor_b))
+        # Tensor should have appropriate shape and values
+        assert len(tensor.shape) == 3  # Channel last format
+        assert tensor.shape[2] == 3    # 3 channels: player1, player2, empty
+        
+    def test_tensor_normalization(self):
+        """Test tensor value normalization."""
+        test_tensor = np.random.rand(6, 7, 3) * 100  # Large values
+        
+        normalized = self.engine.normalize_tensor(test_tensor)
+        
+        # Values should be normalized (typically between 0-1 or -1-1)
+        assert np.max(np.abs(normalized)) <= 1.0
+        
+    def test_matrix_multiplication(self):
+        """Test tensor matrix multiplication."""
+        A = np.random.rand(6, 7)
+        B = np.random.rand(7, 6)
+        
+        result = self.engine.matrix_multiply(A, B)
+        
+        assert result.shape == (6, 6)
+        # Verify multiplication is correct
+        expected = np.dot(A, B)
+        np.testing.assert_array_almost_equal(result, expected)
+        
+    def test_tensor_contraction(self):
+        """Test tensor contraction operations."""
+        tensor = np.random.rand(6, 7, 3)
+        
+        contracted = self.engine.tensor_contraction(tensor, (0, 1))
+        
+        # Should contract first two dimensions
+        assert contracted.shape == (3,)
+        
+    def test_eigenvalue_calculation(self):
+        """Test eigenvalue computation for square matrices."""
+        # Create symmetric matrix for real eigenvalues
+        matrix = np.random.rand(5, 5)
+        symmetric_matrix = (matrix + matrix.T) / 2
+        
+        eigenvalues = self.engine.compute_eigenvalues(symmetric_matrix)
+        
+        assert len(eigenvalues) == 5
+        # Eigenvalues of real symmetric matrix should be real
+        assert np.all(np.isreal(eigenvalues))
+        
+
+class TestCryptographicTensorOperations:
+    """Test suite for cryptographic tensor operations."""
     
-    def test_cryptographic_transformations(self):
-        """Test cryptographic transformations"""
-        original_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
+    def setup_method(self):
+        self.engine = TensorEngine()
         
-        # Apply transformations
-        transformed = self.engine._apply_cryptographic_transformations(original_tensor)
+    def test_tensor_encryption(self):
+        """Test encryption of tensor data."""
+        original_tensor = np.random.rand(6, 7, 3)
+        key = b'test_key_16_bytes!!'
         
-        # Check properties
-        self.assertEqual(transformed.shape, original_tensor.shape)
-        self.assertEqual(transformed.dtype, original_tensor.dtype)
+        encrypted = self.engine.encrypt_tensor(original_tensor, key)
         
-        # Should be different from original (unless extremely unlikely)
-        self.assertFalse(np.array_equal(transformed, original_tensor))
-    
-    def test_session_transformations(self):
-        """Test session-specific transformations"""
-        original_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        session_key = b"test_session_key_32_bytes_long12"
+        # Encrypted tensor should be different
+        assert not np.array_equal(encrypted, original_tensor)
+        assert encrypted.shape == original_tensor.shape
         
-        # Apply session transformations
-        transformed = self.engine._apply_session_transformations(original_tensor, session_key)
+    def test_tensor_decryption(self):
+        """Test decryption of tensor data."""
+        original_tensor = np.random.rand(4, 4, 2)
+        key = b'decryption_test_key'
         
-        # Check properties
-        self.assertEqual(transformed.shape, original_tensor.shape)
-        self.assertEqual(transformed.dtype, original_tensor.dtype)
-        
-        # Same key should produce same result (deterministic)
-        transformed2 = self.engine._apply_session_transformations(original_tensor, session_key)
-        self.assertTrue(np.array_equal(transformed, transformed2))
-        
-        # Different key should produce different result
-        different_key = b"different_key_32_bytes_long123"
-        transformed3 = self.engine._apply_session_transformations(original_tensor, different_key)
-        self.assertFalse(np.array_equal(transformed, transformed3))
-    
-    def test_encryption_layer_invertibility(self):
-        """Test that encryption layers are properly invertible"""
-        data_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        key_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        
-        # Apply encryption layers
-        encrypted = self.engine._apply_encryption_layers(data_tensor, key_tensor)
-        
-        # Apply decryption layers
-        decrypted = self.engine._apply_decryption_layers(encrypted, key_tensor)
+        encrypted = self.engine.encrypt_tensor(original_tensor, key)
+        decrypted = self.engine.decrypt_tensor(encrypted, key)
         
         # Should recover original data
-        self.assertTrue(np.array_equal(data_tensor, decrypted))
+        np.testing.assert_array_almost_equal(decrypted, original_tensor)
+        
+    def test_tensor_hash(self):
+        """Test tensor hashing for integrity verification."""
+        tensor = np.random.rand(6, 7, 3)
+        
+        hash_value = self.engine.tensor_hash(tensor)
+        
+        assert isinstance(hash_value, bytes)
+        assert len(hash_value) == 32  # SHA-256 hash length
+        
+    def test_hash_consistency(self):
+        """Test hash consistency for same tensors."""
+        tensor = np.random.rand(5, 5, 2)
+        
+        hash1 = self.engine.tensor_hash(tensor)
+        hash2 = self.engine.tensor_hash(tensor)
+        
+        assert hash1 == hash2  # Same tensor should produce same hash
+        
+    def test_hash_sensitivity(self):
+        """Test hash sensitivity to small changes."""
+        tensor1 = np.random.rand(4, 4, 3)
+        tensor2 = tensor1.copy()
+        tensor2[0, 0, 0] += 0.0001  # Tiny change
+        
+        hash1 = self.engine.tensor_hash(tensor1)
+        hash2 = self.engine.tensor_hash(tensor2)
+        
+        assert hash1 != hash2  # Hashes should be different
+        
+    def test_secure_random_tensor(self):
+        """Test generation of cryptographically secure random tensors."""
+        shape = (3, 3, 2)
+        random_tensor = self.engine.secure_random_tensor(shape)
+        
+        assert random_tensor.shape == shape
+        # Values should be properly distributed
+        assert np.min(random_tensor) >= 0
+        assert np.max(random_tensor) <= 1
+
+
+class TestTensorEngineIntegration:
+    """Integration tests for tensor engine with other components."""
     
-    def test_nonlinear_transformation_invertibility(self):
-        """Test nonlinear transformation invertibility"""
-        data_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        key_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
+    def setup_method(self):
+        self.engine = TensorEngine()
+        self.ai_player = AIPlayer(depth=2, player_id=2)
         
-        # Apply nonlinear transformation
-        transformed = self.engine._nonlinear_transformation(data_tensor, key_tensor)
+    def test_ai_with_tensor_engine(self):
+        """Test AI integration with tensor engine."""
+        game_state = self.engine.initialize_game()
         
-        # Apply inverse transformation
-        recovered = self.engine._inverse_nonlinear_transformation(transformed, key_tensor)
+        # AI makes a move using tensor engine's board
+        ai_move = self.ai_player.find_best_move(game_state['board'])
         
-        # Should recover original data (within numerical precision)
-        self.assertTrue(np.allclose(data_tensor, recovered, atol=1))
-    
-    def test_permutation_invertibility(self):
-        """Test tensor permutation invertibility"""
-        data_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        key_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
+        # Apply move through tensor engine
+        updated_state = self.engine.make_move(game_state, ai_move)
         
-        # Apply permutation
-        permuted = self.engine._tensor_permutation(data_tensor, key_tensor)
+        # Verify move was applied correctly
+        assert updated_state['board'][5, ai_move] == 1
+        assert updated_state['current_player'] == 2
         
-        # Apply inverse permutation
-        recovered = self.engine._inverse_tensor_permutation(permuted, key_tensor)
+    def test_complete_game_flow(self):
+        """Test complete game flow with tensor engine."""
+        game_state = self.engine.initialize_game()
         
-        # Should recover original data exactly
-        self.assertTrue(np.array_equal(data_tensor, recovered))
-    
-    def test_advanced_mixing_invertibility(self):
-        """Test advanced tensor mixing invertibility"""
-        data_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
-        key_tensor = np.random.randint(-128, 127, (4, 4), dtype=np.int8)
+        # Play several moves
+        for move_num in range(10):
+            current_player = game_state['current_player']
+            
+            if current_player == 2:  # AI's turn
+                move = self.ai_player.find_best_move(game_state['board'])
+            else:  # Simple heuristic for player 1
+                valid_moves = self.engine.get_valid_moves(game_state['board'])
+                move = valid_moves[0] if valid_moves else None
+                
+            if move is None:
+                break  # No valid moves
+                
+            game_state = self.engine.make_move(game_state, move)
+            
+            # Check game end conditions
+            if game_state['game_over']:
+                break
+                
+        # Game should have proper end state
+        assert 'game_over' in game_state
+        assert 'winner' in game_state
         
-        # Apply advanced mixing
-        mixed = self.engine._advanced_tensor_mixing(data_tensor, key_tensor)
+    def test_game_state_serialization(self):
+        """Test game state serialization and deserialization."""
+        original_state = self.engine.initialize_game()
+        original_state = self.engine.make_move(original_state, 3)
+        original_state = self.engine.make_move(original_state, 2)
         
-        # Apply inverse mixing
-        recovered = self.engine._inverse_advanced_tensor_mixing(mixed, key_tensor)
+        # Serialize
+        serialized = self.engine.serialize_game_state(original_state)
         
-        # Should recover original data exactly
-        self.assertTrue(np.array_equal(data_tensor, recovered))
-    
-    def test_clear_history(self):
-        """Test clearing transformation history"""
-        session_tensor = self.engine.generate_session_tensor(
-            self.session_id, self.device_fingerprint
+        # Should be JSON serializable
+        import json
+        json_str = json.dumps(serialized)
+        
+        # Deserialize
+        deserialized_state = self.engine.deserialize_game_state(serialized)
+        
+        # Should recover original state
+        assert deserialized_state['current_player'] == original_state['current_player']
+        np.testing.assert_array_equal(
+            deserialized_state['board'], 
+            original_state['board']
         )
         
-        # Perform some operations
-        encrypted_data, metadata = self.engine.encrypt_data(
-            self.test_data, session_tensor
-        )
+    def test_performance_large_tensors(self):
+        """Test performance with larger tensors."""
+        import time
         
-        # Verify history exists
-        self.assertGreater(len(self.engine.transformation_history), 0)
+        large_tensor = np.random.rand(100, 100, 10)
         
-        # Clear history
-        self.engine.clear_history()
+        start_time = time.time()
+        result = self.engine.normalize_tensor(large_tensor)
+        end_time = time.time()
         
-        # Verify history is cleared
-        self.assertEqual(len(self.engine.transformation_history), 0)
-    
-    def test_string_representation(self):
-        """Test string representation of engine"""
-        repr_str = repr(self.engine)
-        
-        self.assertIn('TensorEncryptionEngine', repr_str)
-        self.assertIn('dims=(4, 4)', repr_str)
-        self.assertIn("security='standard'", repr_str)
-        self.assertIn('operations=', repr_str)
+        # Should complete within reasonable time
+        assert end_time - start_time < 5.0  # Less than 5 seconds
+        assert result.shape == large_tensor.shape
 
 
-class TestTensorEngineEdgeCases(unittest.TestCase):
-    """Test edge cases and error conditions"""
-    
-    def setUp(self):
-        """Set up test environment"""
-        self.engine = TensorEncryptionEngine(tensor_dimensions=(2, 2), security_level='basic')
-    
-    def test_invalid_security_level(self):
-        """Test handling of invalid security level"""
-        # Should default to 'standard' for invalid level
-        engine = TensorEncryptionEngine(security_level='invalid')
-        self.assertEqual(engine.security_params['pbkdf2_iterations'], 50000)  # standard level
-    
-    def test_very_small_tensor(self):
-        """Test with very small tensor dimensions"""
-        small_engine = TensorEncryptionEngine(tensor_dimensions=(2, 2))
-        
-        # Should still work with small data
-        test_data = b"Hi"
-        session_tensor = small_engine.generate_session_tensor("test", "device")
-        
-        encrypted_data, metadata = small_engine.encrypt_data(test_data, session_tensor)
-        decrypted_data = small_engine.decrypt_data(encrypted_data, session_tensor, metadata)
-        
-        self.assertEqual(decrypted_data, test_data)
-    
-    def test_large_tensor(self):
-        """Test with larger tensor dimensions"""
-        large_engine = TensorEncryptionEngine(tensor_dimensions=(16, 16))
-        
-        # Should work with larger tensor
-        test_data = b"This is a longer test message that can fit in the larger tensor space"
-        session_tensor = large_engine.generate_session_tensor("test", "device")
-        
-        encrypted_data, metadata = large_engine.encrypt_data(test_data, session_tensor)
-        decrypted_data = large_engine.decrypt_data(encrypted_data, session_tensor, metadata)
-        
-        self.assertEqual(decrypted_data, test_data)
-
-
-if __name__ == '__main__':
-    # Configure test runner
-    unittest.main(verbosity=2, buffer=True)
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
