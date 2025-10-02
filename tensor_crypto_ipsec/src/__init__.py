@@ -1,159 +1,278 @@
+# [file name]: src/__init__.py
 """
-Tensor-Based Post-Quantum Cryptographic System
+Tensor Crypto IPSec - Quantum-Resistant Encryption System
+========================================================
 
-A novel cryptographic system that combines high-dimensional tensor mathematics,
-AI-generated logic, and dynamic dictionary management to create a quantum-resistant
-encryption protocol suitable as an IPsec alternative.
+A novel approach to encryption using tensor mathematics and AI-generated logic chains
+for quantum-resistant security in network communications.
 
-This package provides:
-- Tensor-based encryption engine
-- AI-driven dynamic cryptographic logic generation
-- Secure dictionary management with forward secrecy
-- Network protocol simulation for router integration
+Features:
+---------
+- Quantum-resistant tensor-based cryptography
+- AI-generated mathematical transformations
+- Advanced key management with forward secrecy
+- Secure dictionary management for session state
+- Router-level integration for IPSec replacement
+- Comprehensive performance monitoring and security auditing
+
+Modules:
+--------
+- ai_logic: AI-driven logic generation for cryptographic transformations
+- key_management: Secure key generation, derivation, and lifecycle management
+- tensor_engine: Multi-dimensional tensor operations for encryption
+- dictionary_manager: Secure session state and dictionary management
+- router_interface: Network-level integration and packet processing
+- utils: Cryptographic utilities, performance monitoring, and security auditing
+
+Usage:
+------
+>>> from tensor_crypto_ipsec import (
+...     AILogicGenerator, KeyManager, TensorEncryptionEngine,
+...     DictionaryManager, RouterInterface, CryptoUtils,
+...     SecurityAuditor, PerformanceMonitor
+... )
+
+>>> # Create AI logic generator
+>>> ai_gen = AILogicGenerator(security_level='quantum')
+
+>>> # Initialize key management
+>>> key_mgr = KeyManager(db_path='keys.db', security_level='high')
+
+>>> # Create tensor encryption engine
+>>> tensor_engine = TensorEncryptionEngine(tensor_dimensions=(8, 8))
+
+>>> # Set up dictionary manager
+>>> dict_mgr = DictionaryManager(db_path='dictionaries.db')
+
+>>> # Initialize router interface
+>>> router = RouterInterface(
+...     interface_name='eth0',
+...     key_manager=key_mgr,
+...     dictionary_manager=dict_mgr,
+...     tensor_engine=tensor_engine,
+...     ai_logic_generator=ai_gen
+... )
+
+Security Levels:
+----------------
+- basic: 128-bit security (development/testing)
+- standard: 192-bit security (general use)
+- high: 256-bit security (enterprise)
+- quantum: 512-bit security (post-quantum resistance)
+
+Version: 1.0.2
+Author: Tensor Crypto IPSec Team
+License: Proprietary
 """
 
-__version__ = "1.0.0"
-__author__ = "Tensor Crypto Research Team"
-__license__ = "MIT"
+__version__ = "1.0.2"
+__author__ = "Tensor Crypto IPSec Team"
+__license__ = "Proprietary"
+__email__ = "security@tensor-crypto-ipsec.com"
 
-# Import main classes for easy access
-from .tensor_engine import TensorEncryptionEngine
-from .ai_logic import AILogicGenerator
-from .dictionary_manager import DynamicDictionaryManager
-from .router_interface import RouterInterface
+# Import main classes from modules
+from .ai_logic import AILogicGenerator, LogicType, ComplexityLevel, LogicMetadata
+from .key_management import KeyManager, KeyType, KeyStatus, SecurityLevel as KeySecurityLevel
+from .tensor_engine import TensorEncryptionEngine, TensorDimension, SecurityLevel as TensorSecurityLevel
+from .dictionary_manager import DictionaryManager, DictionaryType, DictionaryStatus
+from .router_interface import RouterInterface, ProtocolType, SessionState, TrafficPriority
 from .utils import (
-    setup_logging,
-    generate_device_fingerprint,
-    calculate_entropy,
-    verify_tensor_integrity
+    CryptoUtils, PerformanceMonitor, DataUtils, SecurityAuditor, ErrorHandler,
+    SecurityLevel as UtilsSecurityLevel, CompressionAlgorithm, SerializationFormat,
+    SecurityError, PerformanceError, ConfigurationError, CircuitOpenError
 )
 
+# Re-export common security level enum
+SecurityLevel = UtilsSecurityLevel
+
 # Package-level configuration
-DEFAULT_TENSOR_DIMENSIONS = (8, 8)
-DEFAULT_SECURITY_LEVEL = 'standard'
-DEFAULT_LOG_LEVEL = 'INFO'
+class Config:
+    """Package configuration settings"""
+    
+    # Default security level
+    DEFAULT_SECURITY_LEVEL = SecurityLevel.HIGH
+    
+    # Default tensor dimensions
+    DEFAULT_TENSOR_DIMENSIONS = (8, 8)
+    
+    # Default buffer sizes
+    DEFAULT_BUFFER_SIZE = 65536
+    
+    # Enable/disable debug features
+    DEBUG = False
+    
+    # Performance monitoring
+    ENABLE_PERFORMANCE_MONITORING = True
+    
+    # Security auditing
+    ENABLE_SECURITY_AUDITING = True
 
-# Version info
-def get_version_info():
-    """Return detailed version information"""
-    return {
-        'version': __version__,
-        'author': __author__,
-        'license': __license__,
-        'description': 'Tensor-Based Post-Quantum Cryptographic System'
-    }
-
-# Main system factory function
-def create_tensor_crypto_system(tensor_dimensions=None, security_level=None, device_id=None):
+# Package initialization function
+def initialize_package(security_level: SecurityLevel = None,
+                      enable_monitoring: bool = True,
+                      enable_auditing: bool = True) -> Dict[str, Any]:
     """
-    Create a complete tensor cryptographic system with all components
+    Initialize the Tensor Crypto IPSec package with specified configuration
     
     Args:
-        tensor_dimensions: Tensor dimensions (default: (8, 8))
-        security_level: Security level ('basic', 'standard', 'high')
-        device_id: Device identifier (auto-generated if None)
-    
+        security_level: Security level for all components
+        enable_monitoring: Enable performance monitoring
+        enable_auditing: Enable security auditing
+        
     Returns:
-        Dictionary containing all initialized system components
+        Dictionary with initialized components
     """
-    if tensor_dimensions is None:
-        tensor_dimensions = DEFAULT_TENSOR_DIMENSIONS
     if security_level is None:
-        security_level = DEFAULT_SECURITY_LEVEL
+        security_level = Config.DEFAULT_SECURITY_LEVEL
     
-    # Setup logging
-    setup_logging(DEFAULT_LOG_LEVEL)
+    # Update configuration
+    Config.DEFAULT_SECURITY_LEVEL = security_level
+    Config.ENABLE_PERFORMANCE_MONITORING = enable_monitoring
+    Config.ENABLE_SECURITY_AUDITING = enable_auditing
     
-    # Generate device ID if not provided
-    if device_id is None:
-        device_id = generate_device_fingerprint()
-    
-    # Initialize core components
-    tensor_engine = TensorEncryptionEngine(
-        tensor_dimensions=tensor_dimensions,
-        security_level=security_level
+    # Initialize utility components
+    from .utils import init_utils
+    crypto_utils, perf_monitor, data_utils, security_auditor, error_handler = init_utils(
+        security_level=security_level,
+        enable_monitoring=enable_monitoring
     )
     
-    ai_logic = AILogicGenerator(
-        input_dim=64,
-        output_dim=np.prod(tensor_dimensions)
-    )
-    
-    dict_manager = DynamicDictionaryManager(
-        device_id=device_id
-    )
-    
-    router_interface = RouterInterface(
-        tensor_engine=tensor_engine,
-        ai_logic=ai_logic,
-        dict_manager=dict_manager,
-        device_id=device_id
-    )
+    logger.info(f"Tensor Crypto IPSec package initialized with {security_level.value} security level")
     
     return {
-        'tensor_engine': tensor_engine,
-        'ai_logic': ai_logic,
-        'dict_manager': dict_manager,
-        'router_interface': router_interface,
-        'device_id': device_id,
-        'config': {
-            'tensor_dimensions': tensor_dimensions,
-            'security_level': security_level
+        'crypto_utils': crypto_utils,
+        'performance_monitor': perf_monitor,
+        'data_utils': data_utils,
+        'security_auditor': security_auditor,
+        'error_handler': error_handler,
+        'config': Config
+    }
+
+# Package cleanup function
+def cleanup_package():
+    """Cleanup package resources and shutdown components"""
+    from .utils import cleanup_utils
+    cleanup_utils()
+    logger.info("Tensor Crypto IPSec package cleanup completed")
+
+# Context manager for package usage
+@contextmanager
+def tensor_crypto_context(security_level: SecurityLevel = SecurityLevel.HIGH):
+    """
+    Context manager for safe package usage with automatic cleanup
+    
+    Args:
+        security_level: Security level for the context
+        
+    Yields:
+        Initialized components dictionary
+    """
+    components = None
+    try:
+        components = initialize_package(security_level=security_level)
+        yield components
+    except Exception as e:
+        logger.error(f"Error in tensor crypto context: {e}")
+        raise
+    finally:
+        if components:
+            cleanup_package()
+
+# Version information
+def get_version_info() -> Dict[str, Any]:
+    """
+    Get detailed version information
+    
+    Returns:
+        Version information dictionary
+    """
+    import sys
+    import platform
+    
+    return {
+        'package_version': __version__,
+        'python_version': sys.version,
+        'platform': platform.platform(),
+        'system': platform.system(),
+        'architecture': platform.architecture()[0],
+        'dependencies': {
+            'numpy': np.__version__,
+            'cryptography': '2.8+',
+            'tensorflow': '2.12+',
+            'msgpack': '1.0.0+'
         }
     }
 
-# System status check
-def system_health_check():
+# Security level validation
+def validate_security_level(level: Union[str, SecurityLevel]) -> SecurityLevel:
     """
-    Perform basic system health check
+    Validate and convert security level
     
+    Args:
+        level: Security level as string or enum
+        
     Returns:
-        Dictionary with system status information
+        Validated SecurityLevel enum
     """
-    try:
-        import numpy as np
-        import tensorflow as tf
-        from cryptography.hazmat.primitives import hashes
-        
-        status = {
-            'numpy_available': True,
-            'numpy_version': np.__version__,
-            'tensorflow_available': True,
-            'tensorflow_version': tf.__version__,
-            'cryptography_available': True,
-            'system_ready': True
-        }
-        
-        # Test basic tensor operations
-        test_tensor = np.random.randint(0, 256, (4, 4), dtype=np.uint8)
-        test_result = np.bitwise_xor(test_tensor, test_tensor)
-        
-        if not np.all(test_result == 0):
-            status['system_ready'] = False
-            status['error'] = 'Basic tensor operations failed'
-        
-        return status
-        
-    except ImportError as e:
-        return {
-            'system_ready': False,
-            'error': f'Missing dependencies: {str(e)}'
-        }
-    except Exception as e:
-        return {
-            'system_ready': False,
-            'error': f'System check failed: {str(e)}'
-        }
+    if isinstance(level, str):
+        try:
+            return SecurityLevel(level.lower())
+        except ValueError:
+            raise ValueError(f"Invalid security level: {level}. Must be one of: {[e.value for e in SecurityLevel]}")
+    elif isinstance(level, SecurityLevel):
+        return level
+    else:
+        raise TypeError(f"Security level must be str or SecurityLevel, got {type(level)}")
 
 # Export all public classes and functions
 __all__ = [
-    'TensorEncryptionEngine',
-    'AILogicGenerator', 
-    'DynamicDictionaryManager',
-    'RouterInterface',
-    'create_tensor_crypto_system',
-    'get_version_info',
-    'system_health_check',
-    'DEFAULT_TENSOR_DIMENSIONS',
-    'DEFAULT_SECURITY_LEVEL'
+    # AI Logic
+    'AILogicGenerator', 'LogicType', 'ComplexityLevel', 'LogicMetadata',
+    
+    # Key Management
+    'KeyManager', 'KeyType', 'KeyStatus', 'KeySecurityLevel',
+    
+    # Tensor Engine
+    'TensorEncryptionEngine', 'TensorDimension', 'TensorSecurityLevel',
+    
+    # Dictionary Management
+    'DictionaryManager', 'DictionaryType', 'DictionaryStatus',
+    
+    # Router Interface
+    'RouterInterface', 'ProtocolType', 'SessionState', 'TrafficPriority',
+    
+    # Utilities
+    'CryptoUtils', 'PerformanceMonitor', 'DataUtils', 'SecurityAuditor', 'ErrorHandler',
+    'SecurityLevel', 'CompressionAlgorithm', 'SerializationFormat',
+    
+    # Exceptions
+    'SecurityError', 'PerformanceError', 'ConfigurationError', 'CircuitOpenError',
+    
+    # Configuration and initialization
+    'Config', 'initialize_package', 'cleanup_package', 'tensor_crypto_context',
+    'get_version_info', 'validate_security_level'
 ]
+
+# Package initialization
+try:
+    # Set up package-level logging
+    import logging
+    logging.getLogger(__name__).addHandler(logging.NullHandler())
+    
+    # Import numpy for tensor operations
+    import numpy as np
+    
+    # Check for critical dependencies
+    try:
+        import cryptography
+        import tensorflow as tf
+        import msgpack
+    except ImportError as e:
+        raise ImportError(f"Missing critical dependency: {e}. Please install required packages.")
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Tensor Crypto IPSec v{__version__} initialized successfully")
+    
+except Exception as e:
+    logging.error(f"Failed to initialize Tensor Crypto IPSec package: {e}")
+    raise
