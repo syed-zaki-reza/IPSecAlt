@@ -1,640 +1,808 @@
+# [file name]: src/ai_logic.py
 """
-ai_logic.py
-AI-Generated Logic for Dynamic Cryptographic Operations
+Enhanced AI Logic Generator for Quantum-Resistant Encryption
+Generates unpredictable mathematical transformations and logic chains for quantum-resistant encryption
 
-This module implements neural network-based generation of cryptographic logic
-for the tensor-based post-quantum cryptographic system. It creates dynamic,
-unpredictable transformation patterns that enhance security against both
-classical and quantum attacks.
+Features:
+- Multi-dimensional tensor transformations
+- AI-generated mathematical equations
+- Quantum-resistant logic chains
+- Adaptive complexity based on security requirements
+- Deterministic generation with high entropy
 """
 
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, Model
 import hashlib
-import hmac
-import pickle
 import json
-import logging
 import time
-from datetime import datetime
-from typing import Tuple, Optional, Dict, Any, List
-from sklearn.metrics import mutual_info_score
-import warnings
+import logging
+from typing import Dict, List, Tuple, Optional, Any, Union
+from enum import Enum
+import secrets
+from dataclasses import dataclass, asdict
+import pickle
+import zlib
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+import sympy as sp
+from scipy import special
+import numba
+from numba import jit, prange
 
-# Suppress TensorFlow warnings for cleaner output
-warnings.filterwarnings('ignore', category=FutureWarning)
-tf.get_logger().setLevel('ERROR')
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+class LogicType(Enum):
+    """Types of AI-generated logic chains"""
+    MATHEMATICAL_TRANSFORM = "mathematical_transform"
+    TENSOR_OPERATION = "tensor_operation"
+    CRYPTOGRAPHIC_MIXING = "cryptographic_mixing"
+    SEQUENTIAL_CHAIN = "sequential_chain"
+    PARALLEL_BRANCH = "parallel_branch"
+    QUANTUM_RESISTANT = "quantum_resistant"
+    CHAOTIC_MAP = "chaotic_map"
+
+class ComplexityLevel(Enum):
+    """Complexity levels for logic generation"""
+    BASIC = "basic"      # 64-128 operations
+    STANDARD = "standard" # 128-256 operations  
+    ADVANCED = "advanced" # 256-512 operations
+    QUANTUM = "quantum"   # 512-1024 operations
+
+@dataclass
+class LogicMetadata:
+    """Metadata for generated logic chains"""
+    logic_id: str
+    logic_type: LogicType
+    complexity_level: ComplexityLevel
+    complexity_score: float
+    entropy_score: float
+    generation_time: float
+    operation_count: int
+    mathematical_properties: Dict[str, Any]
+    dependencies: List[str]
+    creation_timestamp: float
+    version: str = "2.0.0"
+
+@dataclass
+class PerformanceMetrics:
+    """Performance tracking metrics"""
+    total_generations: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    average_generation_time: float = 0.0
+    total_entropy: float = 0.0
+    failed_generations: int = 0
 
 class AILogicGenerator:
     """
-    AI-based logic generator for dynamic cryptographic transformations
+    Advanced AI logic generator for creating unpredictable mathematical transformations
+    and logic chains for quantum-resistant encryption
     
-    Uses deep neural networks to generate session-specific cryptographic
-    logic that is deterministic for the same inputs but unpredictable
-    and high-entropy for different sessions.
+    Key Features:
+    - Multi-architecture neural networks for logic generation
+    - Mathematical equation generation with sympy
+    - Tensor operation chains with adaptive complexity
+    - Quantum-resistant chaotic mappings
+    - Performance optimization with caching
+    - Real-time entropy analysis
     """
-    
-    def __init__(self, input_dim: int = 64, output_dim: int = 64,
-                 architecture: str = 'standard', training_mode: bool = True):
+
+    # Mathematical operation templates
+    MATH_OPERATIONS = [
+        'add', 'multiply', 'subtract', 'divide', 'power', 'modulo',
+        'sin', 'cos', 'tan', 'exp', 'log', 'sqrt', 'abs',
+        'xor', 'and', 'or', 'rotate_left', 'rotate_right',
+        'matrix_multiply', 'tensor_product', 'convolution'
+    ]
+
+    # Complex mathematical functions for advanced transformations
+    COMPLEX_FUNCTIONS = [
+        'bessel', 'gamma', 'zeta', 'erf', 'elliptic',
+        'hypergeometric', 'legendre', 'chebyshev'
+    ]
+
+    def __init__(self, 
+                 input_dim: int = 64,
+                 output_dim: int = 64,
+                 architecture: str = 'advanced',
+                 complexity: str = 'standard',
+                 training_mode: bool = False,
+                 security_level: str = 'high',
+                 enable_caching: bool = True,
+                 cache_size: int = 1000):
         """
-        Initialize AI logic generator
+        Initialize the Advanced AI Logic Generator
         
         Args:
-            input_dim: Dimension of input seed vector
-            output_dim: Dimension of output logic vector
-            architecture: Model architecture ('basic', 'standard', 'advanced')
-            training_mode: Whether to enable training capabilities
+            input_dim: Dimension of input seed vectors
+            output_dim: Dimension of output logic vectors
+            architecture: Model architecture ('basic', 'standard', 'advanced', 'quantum')
+            complexity: Complexity level for logic generation
+            training_mode: Enable training mode for model adaptation
+            security_level: Security level ('basic', 'standard', 'high', 'quantum')
+            enable_caching: Enable generation caching for performance
+            cache_size: Maximum cache size for stored logic chains
         """
+        
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.architecture = architecture
+        self.complexity_level = ComplexityLevel(complexity)
         self.training_mode = training_mode
+        self.security_level = security_level
+        self.enable_caching = enable_caching
+        self.cache_size = cache_size
         
-        # Initialize logging
-        self.logger = logging.getLogger(__name__)
-        
-        # Model and training components
+        # Initialize components
         self.model = None
-        self.training_history = []
-        self.generation_cache = {}
-        self.performance_metrics = {
-            'generations': 0,
-            'cache_hits': 0,
-            'average_generation_time': 0.0,
-            'entropy_scores': []
-        }
+        self.cache = {}
+        self.performance_metrics = PerformanceMetrics()
+        self.logic_registry = {}
+        self.mathematical_library = {}
         
-        # Build the neural network model
+        # Security parameters based on level
+        self.security_params = self._get_security_params(security_level)
+        
+        # Initialize neural network model
         self._build_model()
         
-        # Initialize training data if in training mode
-        if self.training_mode:
-            self._initialize_training_components()
+        # Initialize mathematical operation library
+        self._build_mathematical_library()
         
-        self.logger.info(f"AI Logic Generator initialized: {self.architecture} architecture, "
-                        f"input_dim={input_dim}, output_dim={output_dim}")
-    
-    def _build_model(self):
-        """Build neural network model based on architecture specification"""
-        architecture_configs = {
+        # Initialize cache management
+        self.cache_hits = 0
+        self.cache_misses = 0
+        
+        logger.info(f"AILogicGenerator initialized with {architecture} architecture "
+                   f"and {complexity} complexity level")
+
+    def _get_security_params(self, level: str) -> Dict[str, Any]:
+        """Get security parameters based on security level"""
+        params = {
             'basic': {
-                'hidden_layers': [128, 64],
-                'dropout_rates': [0.1, 0.1],
-                'activations': ['relu', 'tanh'],
-                'use_batch_norm': False,
-                'complexity_factor': 1
+                'entropy_threshold': 4.0,
+                'min_operations': 16,
+                'max_operations': 64,
+                'chaotic_iterations': 8,
+                'neural_layers': 3
             },
             'standard': {
-                'hidden_layers': [256, 128, 64],
-                'dropout_rates': [0.2, 0.2, 0.1],
-                'activations': ['relu', 'tanh', 'sigmoid'],
-                'use_batch_norm': True,
-                'complexity_factor': 2
+                'entropy_threshold': 5.0,
+                'min_operations': 32,
+                'max_operations': 128,
+                'chaotic_iterations': 16,
+                'neural_layers': 5
             },
-            'advanced': {
-                'hidden_layers': [512, 256, 128, 64],
-                'dropout_rates': [0.3, 0.25, 0.2, 0.1],
-                'activations': ['relu', 'elu', 'tanh', 'sigmoid'],
-                'use_batch_norm': True,
-                'complexity_factor': 3
+            'high': {
+                'entropy_threshold': 6.0,
+                'min_operations': 64,
+                'max_operations': 256,
+                'chaotic_iterations': 32,
+                'neural_layers': 8
+            },
+            'quantum': {
+                'entropy_threshold': 7.5,
+                'min_operations': 128,
+                'max_operations': 512,
+                'chaotic_iterations': 64,
+                'neural_layers': 12
             }
         }
-        
-        config = architecture_configs.get(self.architecture, architecture_configs['standard'])
-        
-        # Build model layers
-        inputs = keras.Input(shape=(self.input_dim,), name='session_seed_input')
-        x = inputs
-        
-        # Hidden layers
-        for i, (units, dropout, activation) in enumerate(zip(
-            config['hidden_layers'], 
-            config['dropout_rates'], 
-            config['activations']
-        )):
-            layer_name = f'{activation}_layer_{i+1}'
-            x = layers.Dense(units, activation=activation, name=layer_name)(x)
+        return params.get(level, params['standard'])
+
+    def _build_model(self):
+        """Build the neural network model for logic generation"""
+        try:
+            if self.architecture == 'basic':
+                self.model = self._build_basic_model()
+            elif self.architecture == 'standard':
+                self.model = self._build_standard_model()
+            elif self.architecture == 'advanced':
+                self.model = self._build_advanced_model()
+            elif self.architecture == 'quantum':
+                self.model = self._build_quantum_model()
+            else:
+                self.model = self._build_standard_model()
+                
+            logger.info(f"Built {self.architecture} model with {self.model.count_params()} parameters")
             
-            if config['use_batch_norm']:
-                x = layers.BatchNormalization(name=f'batch_norm_{i+1}')(x)
+        except Exception as e:
+            logger.error(f"Failed to build model: {e}")
+            self.model = self._build_basic_model()
+
+    def _build_basic_model(self) -> tf.keras.Model:
+        """Build basic neural network model"""
+        model = tf.keras.Sequential([
+            tf.keras.layers.Dense(128, activation='relu', input_shape=(self.input_dim,)),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(256, activation='relu'),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(self.output_dim, activation='tanh')
+        ])
+        return model
+
+    def _build_standard_model(self) -> tf.keras.Model:
+        """Build standard neural network model"""
+        inputs = tf.keras.Input(shape=(self.input_dim,))
+        
+        # Feature extraction
+        x = tf.keras.layers.Dense(256, activation='swish')(inputs)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Dropout(0.3)(x)
+        
+        # Intermediate processing
+        x = tf.keras.layers.Dense(512, activation='swish')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Dropout(0.3)(x)
+        
+        # Output processing
+        x = tf.keras.layers.Dense(256, activation='swish')(x)
+        outputs = tf.keras.layers.Dense(self.output_dim, activation='tanh')(x)
+        
+        model = tf.keras.Model(inputs=inputs, outputs=outputs)
+        return model
+
+    def _build_advanced_model(self) -> tf.keras.Model:
+        """Build advanced neural network model with residual connections"""
+        inputs = tf.keras.Input(shape=(self.input_dim,))
+        
+        # Initial projection
+        x = tf.keras.layers.Dense(512, activation='swish')(inputs)
+        x = tf.keras.layers.BatchNormalization()(x)
+        
+        # Residual blocks
+        for _ in range(4):
+            residual = x
+            x = tf.keras.layers.Dense(512, activation='swish')(x)
+            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.Dropout(0.2)(x)
+            x = tf.keras.layers.Dense(512, activation='swish')(x)
+            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.add([x, residual])
+        
+        # Output processing
+        x = tf.keras.layers.Dense(256, activation='swish')(x)
+        outputs = tf.keras.layers.Dense(self.output_dim, activation='tanh')(x)
+        
+        model = tf.keras.Model(inputs=inputs, outputs=outputs)
+        return model
+
+    def _build_quantum_model(self) -> tf.keras.Model:
+        """Build quantum-inspired neural network model"""
+        inputs = tf.keras.Input(shape=(self.input_dim,))
+        
+        # Quantum-inspired layers with complex transformations
+        x = tf.keras.layers.Dense(1024, activation='swish')(inputs)
+        x = tf.keras.layers.BatchNormalization()(x)
+        
+        # Multiple quantum-inspired blocks
+        for i in range(6):
+            # Quantum rotation-like transformations
+            x = self._quantum_rotation_layer(x, units=1024, block_id=i)
+            x = tf.keras.layers.Dropout(0.25)(x)
+        
+        # Final projection
+        x = tf.keras.layers.Dense(512, activation='swish')(x)
+        outputs = tf.keras.layers.Dense(self.output_dim, activation='tanh')(x)
+        
+        model = tf.keras.Model(inputs=inputs, outputs=outputs)
+        return model
+
+    def _quantum_rotation_layer(self, x: tf.Tensor, units: int, block_id: int) -> tf.Tensor:
+        """Quantum rotation-inspired layer"""
+        # Phase rotation
+        phase = tf.keras.layers.Dense(units, activation='linear')(x)
+        phase = tf.math.sin(phase)  # Periodic activation
+        
+        # Amplitude modulation
+        amplitude = tf.keras.layers.Dense(units, activation='sigmoid')(x)
+        
+        # Quantum-style combination
+        rotated = phase * amplitude
+        
+        # Residual connection
+        if x.shape[-1] == units:
+            rotated = tf.keras.layers.add([rotated, x])
+        else:
+            projected = tf.keras.layers.Dense(units, activation='linear')(x)
+            rotated = tf.keras.layers.add([rotated, projected])
             
-            if dropout > 0:
-                x = layers.Dropout(dropout, name=f'dropout_{i+1}')(x)
-        
-        # Bottleneck layer for additional complexity
-        bottleneck_size = max(32, self.output_dim // 2)
-        x = layers.Dense(bottleneck_size, activation='tanh', name='bottleneck')(x)
-        
-        # Output layer with no activation for maximum range
-        outputs = layers.Dense(self.output_dim, activation='linear', name='logic_output')(x)
-        
-        # Create model
-        self.model = keras.Model(inputs=inputs, outputs=outputs, name=f'ai_logic_{self.architecture}')
-        
-        # Compile with custom loss function
-        self.model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
-            loss=self._cryptographic_loss,
-            metrics=[self._entropy_metric, 'mse']
-        )
-        
-        self.logger.debug(f"Model built with {self.model.count_params():,} parameters")
-    
-    def _cryptographic_loss(self, y_true, y_pred):
+        return rotated
+
+    def _build_mathematical_library(self):
+        """Build library of mathematical operations and transformations"""
+        self.mathematical_library = {
+            'elementary': {
+                'add': lambda a, b: a + b,
+                'multiply': lambda a, b: a * b,
+                'subtract': lambda a, b: a - b,
+                'divide': lambda a, b: a / (b + 1e-10),  # Avoid division by zero
+                'power': lambda a, b: a ** ((b % 10) + 1),  # Limit exponent
+                'modulo': lambda a, b: a % ((abs(b) % 100) + 1)
+            },
+            'trigonometric': {
+                'sin': np.sin,
+                'cos': np.cos,
+                'tan': np.tan,
+                'arcsin': np.arcsin,
+                'arccos': np.arccos,
+                'arctan': np.arctan
+            },
+            'exponential': {
+                'exp': np.exp,
+                'log': np.log,
+                'log10': np.log10,
+                'log2': np.log2
+            },
+            'special_functions': {
+                'bessel_j0': special.j0,
+                'bessel_j1': special.j1,
+                'bessel_y0': special.y0,
+                'bessel_y1': special.y1,
+                'gamma': special.gamma,
+                'erf': special.erf,
+                'zeta': special.zeta
+            },
+            'logical': {
+                'xor': lambda a, b: np.bitwise_xor(a.astype(int), b.astype(int)),
+                'and': lambda a, b: np.bitwise_and(a.astype(int), b.astype(int)),
+                'or': lambda a, b: np.bitwise_or(a.astype(int), b.astype(int)),
+                'not': lambda a: np.bitwise_not(a.astype(int))
+            },
+            'bit_operations': {
+                'rotate_left': self._rotate_bits_left,
+                'rotate_right': self._rotate_bits_right,
+                'shift_left': lambda a, b: np.left_shift(a.astype(int), b.astype(int) % 8),
+                'shift_right': lambda a, b: np.right_shift(a.astype(int), b.astype(int) % 8)
+            }
+        }
+
+    @staticmethod
+    @jit(nopython=True)
+    def _rotate_bits_left(x: np.ndarray, n: int) -> np.ndarray:
+        """Rotate bits left by n positions (optimized with numba)"""
+        result = np.empty_like(x)
+        for i in prange(len(x)):
+            byte_val = x[i] & 0xFF
+            n_effective = n % 8
+            result[i] = ((byte_val << n_effective) | (byte_val >> (8 - n_effective))) & 0xFF
+        return result
+
+    @staticmethod
+    @jit(nopython=True)
+    def _rotate_bits_right(x: np.ndarray, n: int) -> np.ndarray:
+        """Rotate bits right by n positions (optimized with numba)"""
+        result = np.empty_like(x)
+        for i in prange(len(x)):
+            byte_val = x[i] & 0xFF
+            n_effective = n % 8
+            result[i] = ((byte_val >> n_effective) | (byte_val << (8 - n_effective))) & 0xFF
+        return result
+
+    def generate_session_logic(self,
+                             session_id: str,
+                             device_fingerprint: str,
+                             timestamp: Optional[float] = None,
+                             additional_entropy: Optional[bytes] = None,
+                             use_cache: bool = True) -> Tuple[np.ndarray, LogicMetadata]:
         """
-        Custom loss function optimized for cryptographic properties
-        
-        Combines standard MSE with terms that encourage:
-        - High entropy (diverse outputs)
-        - Low correlation between different inputs
-        - Balanced value distribution
-        """
-        # Standard reconstruction loss
-        mse_loss = tf.reduce_mean(tf.square(y_true - y_pred))
-        
-        # Entropy regularization - encourage diverse outputs
-        # Approximate entropy using histogram
-        y_pred_clipped = tf.clip_by_value(y_pred, -10, 10)
-        hist_bins = 20
-        hist_range = [-10, 10]
-        
-        # Create histogram (approximation)
-        hist = tf.histogram_fixed_width(y_pred_clipped, hist_range, nbins=hist_bins)
-        hist_normalized = hist / tf.reduce_sum(hist)
-        hist_normalized = tf.maximum(hist_normalized, 1e-10)  # Avoid log(0)
-        
-        entropy = -tf.reduce_sum(hist_normalized * tf.math.log(hist_normalized))
-        entropy_loss = -0.01 * entropy  # Negative because we want to maximize entropy
-        
-        # Variance regularization - encourage spread in values
-        variance = tf.math.reduce_variance(y_pred, axis=1)
-        variance_loss = -0.005 * tf.reduce_mean(variance)  # Encourage high variance
-        
-        # Correlation penalty - discourage patterns within output
-        y_pred_centered = y_pred - tf.reduce_mean(y_pred, axis=1, keepdims=True)
-        correlation_matrix = tf.linalg.matmul(y_pred_centered, y_pred_centered, transpose_b=True)
-        correlation_loss = 0.001 * tf.reduce_mean(tf.square(correlation_matrix))
-        
-        total_loss = mse_loss + entropy_loss + variance_loss + correlation_loss
-        return total_loss
-    
-    def _entropy_metric(self, y_true, y_pred):
-        """Metric to monitor entropy of generated outputs"""
-        y_pred_clipped = tf.clip_by_value(y_pred, -10, 10)
-        variance = tf.math.reduce_variance(y_pred_clipped, axis=1)
-        return tf.reduce_mean(variance)
-    
-    def _initialize_training_components(self):
-        """Initialize components needed for training"""
-        self.training_callbacks = [
-            keras.callbacks.EarlyStopping(
-                monitor='val_loss', 
-                patience=15, 
-                restore_best_weights=True,
-                verbose=0
-            ),
-            keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.5,
-                patience=8,
-                min_lr=1e-6,
-                verbose=0
-            )
-        ]
-        
-        # Generate initial training data
-        self._generate_initial_training_data()
-    
-    def _generate_initial_training_data(self, num_samples: int = 2000):
-        """Generate initial training data for the model"""
-        self.logger.info(f"Generating {num_samples} initial training samples...")
-        
-        X_train = []
-        y_train = []
-        
-        for i in range(num_samples):
-            # Create diverse session parameters
-            session_id = f"training_session_{i}_{int(time.time())}"
-            device_fp = f"device_{np.random.randint(100000, 999999):06d}"
-            timestamp = time.time() + np.random.uniform(-86400*30, 86400*30)  # ±30 days
-            
-            # Generate input seed
-            seed = self._create_session_seed(session_id, device_fp, timestamp)
-            X_train.append(seed)
-            
-            # Generate target output with desired cryptographic properties
-            target = self._generate_cryptographic_target(seed, i)
-            y_train.append(target)
-        
-        self.X_train = np.array(X_train)
-        self.y_train = np.array(y_train)
-        
-        self.logger.info(f"Training data generated: X shape {self.X_train.shape}, y shape {self.y_train.shape}")
-    
-    def _generate_cryptographic_target(self, seed: np.ndarray, index: int) -> np.ndarray:
-        """Generate target output with good cryptographic properties"""
-        # Use seed to create deterministic but complex target
-        seed_hash = hashlib.sha256(seed.tobytes() + str(index).encode()).digest()
-        
-        # Convert hash to float array
-        hash_array = np.frombuffer(seed_hash, dtype=np.uint8)
-        
-        # Extend to output dimension
-        extended = np.tile(hash_array, (self.output_dim // len(hash_array)) + 1)[:self.output_dim]
-        
-        # Normalize and apply transformations
-        target = (extended.astype(np.float32) - 128) / 128.0
-        
-        # Apply nonlinear transformations for complexity
-        target = np.tanh(target * 2)
-        target = np.sin(target * np.pi) * np.cos(target * np.pi / 2)
-        
-        # Ensure good distribution properties
-        target = target / np.std(target) if np.std(target) > 0 else target
-        target = np.clip(target, -3, 3)
-        
-        return target
-    
-    def _create_session_seed(self, session_id: str, device_fingerprint: str, 
-                           timestamp: Optional[float] = None) -> np.ndarray:
-        """
-        Create deterministic seed from session parameters
-        
-        Args:
-            session_id: Unique session identifier
-            device_fingerprint: Device-specific fingerprint
-            timestamp: Optional timestamp (uses current time if None)
-            
-        Returns:
-            Normalized seed vector for neural network input
-        """
-        if timestamp is None:
-            timestamp = time.time()
-        
-        # Combine session information
-        combined_data = f"{session_id}_{device_fingerprint}_{timestamp:.6f}"
-        
-        # Create multiple hash values for diversity
-        sha256_hash = hashlib.sha256(combined_data.encode()).digest()
-        sha1_hash = hashlib.sha1(combined_data.encode()).digest()
-        md5_hash = hashlib.md5(combined_data.encode()).digest()
-        
-        # HMAC with session ID as key for additional security
-        hmac_hash = hmac.new(
-            session_id.encode()[:32].ljust(32, b'\0'), 
-            combined_data.encode(), 
-            hashlib.sha256
-        ).digest()
-        
-        # Combine all hashes
-        combined_hash = sha256_hash + sha1_hash + md5_hash + hmac_hash
-        
-        # Convert to seed vector
-        seed_bytes = np.frombuffer(combined_hash, dtype=np.uint8)[:self.input_dim]
-        
-        # Pad if necessary
-        if len(seed_bytes) < self.input_dim:
-            padding = np.random.RandomState(42).randint(0, 256, 
-                                                       self.input_dim - len(seed_bytes), 
-                                                       dtype=np.uint8)
-            seed_bytes = np.concatenate([seed_bytes, padding])
-        
-        # Normalize to [-1, 1] range for neural network
-        normalized_seed = (seed_bytes.astype(np.float32) - 128) / 128.0
-        
-        return normalized_seed
-    
-    def generate_session_logic(self, session_id: str, device_fingerprint: str,
-                              timestamp: Optional[float] = None,
-                              use_cache: bool = True) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """
-        Generate AI-based cryptographic logic for a session
+        Generate AI logic for a specific session with high entropy and quantum resistance
         
         Args:
             session_id: Unique session identifier
             device_fingerprint: Device-specific fingerprint
             timestamp: Optional timestamp for deterministic generation
-            use_cache: Whether to use caching for repeated requests
+            additional_entropy: Additional entropy source
+            use_cache: Enable caching for performance
             
         Returns:
             Tuple of (logic_vector, metadata)
         """
-        # Create cache key
-        cache_key = f"{session_id}_{device_fingerprint}_{timestamp}"
-        
-        # Check cache first
-        if use_cache and cache_key in self.generation_cache:
-            self.performance_metrics['cache_hits'] += 1
-            cached_result = self.generation_cache[cache_key]
-            return cached_result['logic_vector'], cached_result['metadata']
         
         start_time = time.time()
         
-        # Create input seed
-        seed = self._create_session_seed(session_id, device_fingerprint, timestamp)
+        if timestamp is None:
+            timestamp = time.time()
         
-        # Generate logic using trained model
-        logic_vector = self.model.predict(seed.reshape(1, -1), verbose=0)[0]
+        # Generate cache key
+        cache_key = self._generate_cache_key(session_id, device_fingerprint, timestamp, additional_entropy)
         
-        # Post-process for enhanced cryptographic properties
-        processed_logic = self._post_process_logic(logic_vector)
+        # Check cache if enabled
+        if use_cache and self.enable_caching and cache_key in self.cache:
+            self.cache_hits += 1
+            self.performance_metrics.cache_hits += 1
+            logger.debug(f"Cache hit for session {session_id}")
+            return self.cache[cache_key]
         
-        # Calculate metadata
-        generation_time = time.time() - start_time
-        entropy_score = self._calculate_entropy(processed_logic)
+        self.cache_misses += 1
+        self.performance_metrics.cache_misses += 1
         
-        metadata = {
-            'session_id': session_id,
-            'device_fingerprint': device_fingerprint,
-            'timestamp': timestamp or time.time(),
-            'generation_time': generation_time,
-            'entropy_score': entropy_score,
-            'logic_vector_hash': hashlib.sha256(processed_logic.tobytes()).hexdigest(),
-            'model_architecture': self.architecture,
-            'seed_hash': hashlib.sha256(seed.tobytes()).hexdigest()
-        }
-        
-        # Update performance metrics
-        self.performance_metrics['generations'] += 1
-        self.performance_metrics['entropy_scores'].append(entropy_score)
-        
-        # Update average generation time
-        total_time = (self.performance_metrics['average_generation_time'] * 
-                     (self.performance_metrics['generations'] - 1) + generation_time)
-        self.performance_metrics['average_generation_time'] = total_time / self.performance_metrics['generations']
-        
-        # Cache result
-        if use_cache:
-            self.generation_cache[cache_key] = {
-                'logic_vector': processed_logic.copy(),
-                'metadata': metadata.copy()
-            }
-        
-        self.logger.debug(f"Generated logic for session {session_id[:16]}... "
-                         f"(entropy: {entropy_score:.3f}, time: {generation_time:.4f}s)")
-        
-        return processed_logic, metadata
-    
-    def _post_process_logic(self, raw_logic: np.ndarray) -> np.ndarray:
-        """
-        Post-process raw neural network output for cryptographic use
-        
-        Args:
-            raw_logic: Raw output from neural network
+        try:
+            # Generate seed for deterministic logic generation
+            seed_vector = self._create_session_seed(session_id, device_fingerprint, timestamp, additional_entropy)
             
-        Returns:
-            Post-processed logic vector optimized for cryptography
-        """
-        # Apply multiple nonlinear transformations
-        processed = raw_logic.copy()
+            # Generate base logic using neural network
+            base_logic = self._generate_base_logic(seed_vector)
+            
+            # Apply mathematical transformations
+            transformed_logic = self._apply_mathematical_transformations(base_logic, seed_vector)
+            
+            # Apply chaotic mixing for quantum resistance
+            chaotic_logic = self._apply_chaotic_mixing(transformed_logic, seed_vector)
+            
+            # Final post-processing
+            final_logic = self._post_process_logic(chaotic_logic)
+            
+            # Calculate metrics
+            entropy_score = self._calculate_entropy(final_logic)
+            complexity_score = self._calculate_complexity(final_logic)
+            operation_count = self._count_operations(final_logic)
+            
+            # Create metadata
+            metadata = LogicMetadata(
+                logic_id=hashlib.sha256(final_logic.tobytes()).hexdigest()[:16],
+                logic_type=LogicType.QUANTUM_RESISTANT,
+                complexity_level=self.complexity_level,
+                complexity_score=complexity_score,
+                entropy_score=entropy_score,
+                generation_time=time.time() - start_time,
+                operation_count=operation_count,
+                mathematical_properties={
+                    'entropy': entropy_score,
+                    'complexity': complexity_score,
+                    'dimensions': final_logic.shape,
+                    'data_type': str(final_logic.dtype),
+                    'value_range': (final_logic.min(), final_logic.max())
+                },
+                dependencies=[session_id, device_fingerprint],
+                creation_timestamp=time.time()
+            )
+            
+            result = (final_logic, metadata)
+            
+            # Cache the result
+            if self.enable_caching:
+                self._add_to_cache(cache_key, result)
+            
+            # Update performance metrics
+            self.performance_metrics.total_generations += 1
+            self.performance_metrics.total_entropy += entropy_score
+            self.performance_metrics.average_generation_time = (
+                self.performance_metrics.average_generation_time * 
+                (self.performance_metrics.total_generations - 1) + 
+                metadata.generation_time
+            ) / self.performance_metrics.total_generations
+            
+            logger.info(f"Generated logic for session {session_id} with entropy {entropy_score:.3f}")
+            
+            return result
+            
+        except Exception as e:
+            self.performance_metrics.failed_generations += 1
+            logger.error(f"Failed to generate logic for session {session_id}: {e}")
+            raise
+
+    def _generate_cache_key(self, session_id: str, device_fingerprint: str, 
+                          timestamp: float, additional_entropy: Optional[bytes]) -> str:
+        """Generate unique cache key for logic generation"""
+        key_data = f"{session_id}:{device_fingerprint}:{timestamp:.6f}"
+        if additional_entropy:
+            key_data += f":{additional_entropy.hex()}"
+        return hashlib.sha256(key_data.encode()).hexdigest()[:32]
+
+    def _create_session_seed(self, session_id: str, device_fingerprint: str,
+                           timestamp: float, additional_entropy: Optional[bytes]) -> np.ndarray:
+        """Create deterministic seed vector for session"""
+        # Combine inputs
+        seed_input = f"{session_id}:{device_fingerprint}:{timestamp:.10f}"
+        if additional_entropy:
+            seed_input += f":{additional_entropy.hex()}"
         
-        # Layer 1: Tanh activation for bounded output
-        processed = np.tanh(processed * 2)
+        # Generate hash-based seed
+        seed_hash = hashlib.sha512(seed_input.encode()).digest()
         
-        # Layer 2: Sinusoidal transformation for additional nonlinearity  
-        processed = np.sin(processed * np.pi) * np.cos(processed * np.pi / 3)
+        # Use HKDF for additional cryptographic strength
+        hkdf = HKDF(
+            algorithm=hashes.SHA512(),
+            length=self.input_dim * 4,  # Enough for float32
+            salt=None,
+            info=b"ai_logic_generator_seed"
+        )
+        derived_seed = hkdf.derive(seed_hash)
         
-        # Layer 3: Bit-level transformations
-        # Convert to integer representation for XOR operations
-        processed = (processed * 127).astype(np.int8)
+        # Convert to numpy array with proper distribution
+        seed_int = int.from_bytes(derived_seed[:16], 'big')
+        np.random.seed(seed_int)
         
-        # Layer 4: Ensure non-zero values (avoid weak encryption)
-        zero_mask = processed == 0
-        processed[zero_mask] = np.random.choice([-1, 1], size=np.sum(zero_mask))
+        # Generate uniform distribution in [-1, 1]
+        seed_vector = np.random.uniform(-1, 1, self.input_dim).astype(np.float32)
         
-        # Layer 5: Enhance entropy through permutation
-        perm_seed = np.sum(np.abs(processed)) % 1000
-        np.random.seed(perm_seed)
-        perm_indices = np.random.permutation(len(processed))
-        processed = processed[perm_indices]
+        return seed_vector
+
+    def _generate_base_logic(self, seed_vector: np.ndarray) -> np.ndarray:
+        """Generate base logic using neural network"""
+        # Ensure seed is 2D for model prediction
+        seed_2d = seed_vector.reshape(1, -1)
+        
+        # Generate base logic
+        base_logic = self.model.predict(seed_2d, verbose=0)[0]
+        
+        return base_logic
+
+    def _apply_mathematical_transformations(self, logic: np.ndarray, seed: np.ndarray) -> np.ndarray:
+        """Apply complex mathematical transformations to logic"""
+        transformed = logic.copy()
+        
+        # Determine number of operations based on complexity level
+        min_ops = self.security_params['min_operations']
+        max_ops = self.security_params['max_operations']
+        num_operations = np.random.randint(min_ops, max_ops + 1)
+        
+        operation_categories = list(self.mathematical_library.keys())
+        
+        for i in range(num_operations):
+            # Select random operation category and specific operation
+            category = np.random.choice(operation_categories)
+            operation_name = np.random.choice(list(self.mathematical_library[category].keys()))
+            operation = self.mathematical_library[category][operation_name]
+            
+            try:
+                # Generate random parameters based on seed
+                param_seed = (seed[i % len(seed)] * 1000) if len(seed) > 0 else 1.0
+                np.random.seed(int(abs(param_seed * 1000000)) % (2**32))
+                
+                # Apply operation with random parameter
+                if operation_name in ['add', 'multiply', 'subtract', 'divide', 'power', 'modulo']:
+                    param = np.random.uniform(-2.0, 2.0, size=transformed.shape)
+                    transformed = operation(transformed, param)
+                elif operation_name in ['xor', 'and', 'or']:
+                    param = np.random.randint(0, 256, size=transformed.shape, dtype=np.int8)
+                    transformed = operation(transformed, param)
+                elif operation_name in ['rotate_left', 'rotate_right', 'shift_left', 'shift_right']:
+                    n_bits = np.random.randint(1, 8)
+                    transformed = operation(transformed, n_bits)
+                else:
+                    # Unary operations
+                    transformed = operation(transformed)
+                    
+                # Normalize to prevent overflow
+                transformed = np.clip(transformed, -10.0, 10.0)
+                
+            except Exception as e:
+                logger.warning(f"Operation {operation_name} failed: {e}")
+                continue
+        
+        return transformed
+
+    def _apply_chaotic_mixing(self, logic: np.ndarray, seed: np.ndarray) -> np.ndarray:
+        """Apply chaotic system mixing for quantum resistance"""
+        mixed = logic.copy()
+        iterations = self.security_params['chaotic_iterations']
+        
+        for _ in range(iterations):
+            # Lorenz-like chaotic system
+            x, y, z = mixed[0], mixed[1] if len(mixed) > 1 else mixed[0], mixed[2] if len(mixed) > 2 else mixed[0]
+            
+            sigma, rho, beta = 10.0, 28.0, 8.0/3.0
+            dt = 0.01
+            
+            dx = sigma * (y - x)
+            dy = x * (rho - z) - y
+            dz = x * y - beta * z
+            
+            # Update positions with chaotic influence
+            for i in range(len(mixed)):
+                chaotic_influence = (dx * i + dy * (i+1) + dz * (i+2)) / 100.0
+                mixed[i] = (mixed[i] + chaotic_influence) % 1.0
+        
+        return mixed
+
+    def _post_process_logic(self, logic: np.ndarray) -> np.ndarray:
+        """Final post-processing of logic vector"""
+        # Convert to int8 for efficient storage and transmission
+        processed = np.clip(logic * 127, -128, 127).astype(np.int8)
+        
+        # Ensure no all-zero vectors (weak encryption)
+        if np.all(processed == 0):
+            processed[0] = 1
         
         return processed
-    
+
     def _calculate_entropy(self, data: np.ndarray) -> float:
-        """Calculate approximate entropy of data array"""
-        # Convert to histogram
-        hist, _ = np.histogram(data, bins=min(20, len(np.unique(data))))
-        hist = hist + 1e-10  # Avoid log(0)
+        """Calculate Shannon entropy of the logic vector"""
+        # Convert to histogram for entropy calculation
+        hist, _ = np.histogram(data, bins=256, density=True)
+        hist = hist[hist > 0]  # Remove zero bins
         
-        # Calculate probabilities
-        probabilities = hist / np.sum(hist)
-        
-        # Calculate entropy
-        entropy = -np.sum(probabilities * np.log2(probabilities))
-        
+        entropy = -np.sum(hist * np.log2(hist))
         return float(entropy)
-    
-    def train_model(self, epochs: int = 100, validation_split: float = 0.2,
-                   batch_size: int = 32, verbose: int = 1) -> keras.callbacks.History:
-        """
-        Train the AI logic generation model
+
+    def _calculate_complexity(self, data: np.ndarray) -> float:
+        """Calculate complexity score of logic vector"""
+        # Multiple complexity measures
+        variance = np.var(data)
+        autocorr = np.correlate(data, data, mode='full')
+        autocorr_complexity = np.std(autocorr)
         
-        Args:
-            epochs: Number of training epochs
-            validation_split: Fraction of data for validation
-            batch_size: Training batch size
-            verbose: Verbosity level
-            
-        Returns:
-            Training history
-        """
-        if not self.training_mode:
-            raise ValueError("Training mode not enabled")
+        # Spectral complexity
+        spectrum = np.fft.fft(data)
+        spectral_entropy = -np.sum(np.abs(spectrum) * np.log(np.abs(spectrum) + 1e-10))
         
-        self.logger.info(f"Starting model training for {epochs} epochs...")
+        # Combined complexity score
+        complexity = (variance + autocorr_complexity + spectral_entropy) / 3.0
+        return float(complexity)
+
+    def _count_operations(self, data: np.ndarray) -> int:
+        """Count number of unique operations in final logic"""
+        unique_values = len(np.unique(data))
+        zero_crossings = len(np.where(np.diff(np.signbit(data)))[0])
+        return unique_values + zero_crossings
+
+    def _add_to_cache(self, key: str, value: Tuple[np.ndarray, LogicMetadata]):
+        """Add result to cache with size management"""
+        if len(self.cache) >= self.cache_size:
+            # Remove oldest entry (simple FIFO)
+            oldest_key = next(iter(self.cache))
+            del self.cache[oldest_key]
         
-        # Train model
-        history = self.model.fit(
-            self.X_train, self.y_train,
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_split=validation_split,
-            callbacks=self.training_callbacks,
-            verbose=verbose
-        )
-        
-        self.training_history.append(history)
-        self.logger.info("Model training completed")
-        
-        return history
-    
+        self.cache[key] = value
+
+    def clear_cache(self):
+        """Clear the generation cache"""
+        self.cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        logger.info("Logic generation cache cleared")
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current performance metrics"""
+        metrics_dict = asdict(self.performance_metrics)
+        metrics_dict.update({
+            'cache_size': len(self.cache),
+            'cache_hit_ratio': self.cache_hits / (self.cache_hits + self.cache_misses + 1e-10),
+            'model_architecture': self.architecture,
+            'security_level': self.security_level
+        })
+        return metrics_dict
+
     def evaluate_logic_quality(self, num_samples: int = 100) -> Dict[str, Any]:
-        """
-        Evaluate the quality of generated logic vectors
-        
-        Args:
-            num_samples: Number of samples to generate for evaluation
-            
-        Returns:
-            Quality metrics dictionary
-        """
-        self.logger.info(f"Evaluating logic quality with {num_samples} samples...")
-        
-        logic_samples = []
+        """Evaluate quality of generated logic vectors"""
         entropy_scores = []
-        correlations = []
         generation_times = []
+        complexity_scores = []
         
-        # Generate samples
         for i in range(num_samples):
-            session_id = f"eval_session_{i}"
-            device_fp = f"eval_device_{i}"
+            session_id = f"quality_test_{i}"
+            device_fp = f"test_device_{i}"
             
-            start_time = time.time()
-            logic_vector, metadata = self.generate_session_logic(
-                session_id, device_fp, use_cache=False
-            )
-            generation_time = time.time() - start_time
-            
-            logic_samples.append(logic_vector)
-            entropy_scores.append(metadata['entropy_score'])
-            generation_times.append(generation_time)
+            try:
+                logic_vector, metadata = self.generate_session_logic(
+                    session_id, device_fp, use_cache=False
+                )
+                entropy_scores.append(metadata.entropy_score)
+                generation_times.append(metadata.generation_time)
+                complexity_scores.append(metadata.complexity_score)
+            except Exception as e:
+                logger.warning(f"Failed to generate sample {i}: {e}")
+                continue
         
-        # Calculate inter-sample correlations
-        logic_matrix = np.array(logic_samples)
-        for i in range(min(50, num_samples-1)):
-            for j in range(i+1, min(50, num_samples)):
-                corr = np.corrcoef(logic_matrix[i], logic_matrix[j])[0, 1]
-                if not np.isnan(corr):
-                    correlations.append(abs(corr))
+        if not entropy_scores:
+            return {"error": "No samples generated successfully"}
         
-        # Calculate uniqueness
-        unique_vectors = len(set(tuple(v.tolist()) for v in logic_matrix))
-        uniqueness_ratio = unique_vectors / num_samples
+        # Quality assessment
+        entropy_good = np.mean(entropy_scores) > self.security_params['entropy_threshold']
+        generation_fast = np.mean(generation_times) < 1.0  # Less than 1 second
+        complexity_adequate = np.mean(complexity_scores) > 2.0
         
-        # Statistical analysis
-        quality_metrics = {
-            'num_samples': num_samples,
+        return {
+            'num_samples': len(entropy_scores),
             'entropy': {
                 'mean': float(np.mean(entropy_scores)),
                 'std': float(np.std(entropy_scores)),
                 'min': float(np.min(entropy_scores)),
                 'max': float(np.max(entropy_scores))
             },
-            'correlations': {
-                'mean': float(np.mean(correlations)) if correlations else 0.0,
-                'std': float(np.std(correlations)) if correlations else 0.0,
-                'max': float(np.max(correlations)) if correlations else 0.0
-            },
-            'uniqueness_ratio': uniqueness_ratio,
             'generation_time': {
                 'mean': float(np.mean(generation_times)),
-                'std': float(np.std(generation_times))
+                'std': float(np.std(generation_times)),
+                'min': float(np.min(generation_times)),
+                'max': float(np.max(generation_times))
+            },
+            'complexity': {
+                'mean': float(np.mean(complexity_scores)),
+                'std': float(np.std(complexity_scores))
             },
             'quality_assessment': {
-                'entropy_good': np.mean(entropy_scores) > 3.0,
-                'correlation_good': (np.mean(correlations) if correlations else 0) < 0.1,
-                'uniqueness_good': uniqueness_ratio > 0.95,
-                'performance_good': np.mean(generation_times) < 0.1
+                'entropy_good': entropy_good,
+                'generation_fast': generation_fast,
+                'complexity_adequate': complexity_adequate,
+                'overall_quality': entropy_good and generation_fast and complexity_adequate
             }
         }
-        
-        self.logger.info(f"Logic quality evaluation completed. "
-                        f"Mean entropy: {quality_metrics['entropy']['mean']:.3f}, "
-                        f"Mean correlation: {quality_metrics['correlations']['mean']:.4f}, "
-                        f"Uniqueness: {uniqueness_ratio:.3f}")
-        
-        return quality_metrics
-    
+
     def save_model(self, filepath: str, include_training_data: bool = False):
-        """Save the AI logic model and metadata"""
-        # Save the model
-        model_path = f"{filepath}_model.h5"
-        self.model.save(model_path)
-        
-        # Save metadata
-        metadata = {
+        """Save the AI model and configuration"""
+        model_data = {
+            'model_config': self.model.get_config(),
+            'model_weights': self.model.get_weights(),
             'input_dim': self.input_dim,
             'output_dim': self.output_dim,
             'architecture': self.architecture,
-            'performance_metrics': self.performance_metrics,
-            'training_mode': self.training_mode
+            'security_level': self.security_level,
+            'performance_metrics': asdict(self.performance_metrics)
         }
         
-        if include_training_data and self.training_mode:
-            metadata['training_data'] = {
-                'X_train': self.X_train.tolist(),
-                'y_train': self.y_train.tolist()
-            }
+        # Save model
+        with open(f"{filepath}_model.h5", 'wb') as f:
+            pickle.dump(model_data, f)
         
-        metadata_path = f"{filepath}_metadata.json"
-        with open(metadata_path, 'w') as f:
+        # Save metadata
+        metadata = {
+            'version': '2.0.0',
+            'creation_time': time.time(),
+            'input_dim': self.input_dim,
+            'output_dim': self.output_dim,
+            'architecture': self.architecture,
+            'security_level': self.security_level
+        }
+        
+        with open(f"{filepath}_metadata.json", 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        self.logger.info(f"Model saved to {model_path}, metadata to {metadata_path}")
-    
+        logger.info(f"Model saved to {filepath}")
+
     def load_model(self, filepath: str):
-        """Load a previously saved AI logic model"""
-        model_path = f"{filepath}_model.h5"
-        metadata_path = f"{filepath}_metadata.json"
-        
-        # Load model
-        self.model = keras.models.load_model(
-            model_path,
-            custom_objects={
-                '_cryptographic_loss': self._cryptographic_loss,
-                '_entropy_metric': self._entropy_metric
-            }
-        )
-        
-        # Load metadata
-        with open(metadata_path, 'r') as f:
-            metadata = json.load(f)
-        
-        self.input_dim = metadata['input_dim']
-        self.output_dim = metadata['output_dim']
-        self.architecture = metadata['architecture']
-        self.performance_metrics = metadata['performance_metrics']
-        self.training_mode = metadata['training_mode']
-        
-        # Load training data if available
-        if 'training_data' in metadata and self.training_mode:
-            self.X_train = np.array(metadata['training_data']['X_train'])
-            self.y_train = np.array(metadata['training_data']['y_train'])
-        
-        self.logger.info(f"Model loaded from {model_path}")
-    
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get current performance metrics"""
-        return self.performance_metrics.copy()
-    
-    def clear_cache(self):
-        """Clear the generation cache"""
-        cache_size = len(self.generation_cache)
-        self.generation_cache.clear()
-        self.logger.info(f"Cleared cache ({cache_size} entries)")
-    
-    def benchmark_performance(self, num_iterations: int = 1000) -> Dict[str, float]:
-        """Benchmark logic generation performance"""
-        self.logger.info(f"Benchmarking performance with {num_iterations} iterations...")
-        
-        start_time = time.time()
-        
-        for i in range(num_iterations):
-            session_id = f"benchmark_session_{i}"
-            device_fp = f"benchmark_device_{i}"
-            logic_vector, _ = self.generate_session_logic(session_id, device_fp, use_cache=False)
-        
-        total_time = time.time() - start_time
-        
-        results = {
-            'total_time': total_time,
-            'iterations': num_iterations,
-            'ops_per_second': num_iterations / total_time,
-            'time_per_op_ms': (total_time / num_iterations) * 1000,
-            'average_entropy': np.mean(self.performance_metrics['entropy_scores'][-num_iterations:]) if self.performance_metrics['entropy_scores'] else 0
-        }
-        
-        self.logger.info(f"Benchmark completed: {results['ops_per_second']:.1f} ops/sec, "
-                        f"{results['time_per_op_ms']:.3f} ms/op")
-        
-        return results
-    
+        """Load AI model and configuration"""
+        try:
+            with open(f"{filepath}_model.h5", 'rb') as f:
+                model_data = pickle.load(f)
+            
+            # Rebuild model
+            self.model = tf.keras.models.model_from_config(model_data['model_config'])
+            self.model.set_weights(model_data['model_weights'])
+            
+            # Restore configuration
+            self.input_dim = model_data['input_dim']
+            self.output_dim = model_data['output_dim']
+            self.architecture = model_data['architecture']
+            self.security_level = model_data['security_level']
+            
+            logger.info(f"Model loaded from {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+            raise
+
     def __repr__(self) -> str:
-        """String representation of the AI logic generator"""
+        """String representation of the generator"""
         return (f"AILogicGenerator(arch='{self.architecture}', "
-                f"input_dim={self.input_dim}, output_dim={self.output_dim}, "
-                f"generations={self.performance_metrics['generations']})")
+                f"in_dim={self.input_dim}, out_dim={self.output_dim}, "
+                f"security='{self.security_level}', "
+                f"generations={self.performance_metrics.total_generations})")
+
+# Utility function for quick initialization
+def create_ai_logic_generator(complexity: str = "standard", 
+                            security: str = "high") -> AILogicGenerator:
+    """
+    Create a pre-configured AI logic generator
+    
+    Args:
+        complexity: Complexity level ('basic', 'standard', 'advanced', 'quantum')
+        security: Security level ('basic', 'standard', 'high', 'quantum')
+    
+    Returns:
+        Configured AILogicGenerator instance
+    """
+    return AILogicGenerator(
+        input_dim=128,
+        output_dim=128,
+        architecture='advanced' if complexity in ['advanced', 'quantum'] else 'standard',
+        complexity=complexity,
+        security_level=security,
+        enable_caching=True,
+        cache_size=2000
+    )

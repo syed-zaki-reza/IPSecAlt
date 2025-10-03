@@ -1,1244 +1,1102 @@
+# [file name]: src/router_interface.py
 """
-router_interface.py
-Network Interface and Protocol Simulation for Tensor-Based Post-Quantum Cryptography
+Enhanced Router Interface for Quantum-Resistant IPSec Alternative
+Advanced network routing interface with quantum-resistant encryption capabilities
 
-This module implements network communication protocols, packet handling, and router
-integration for the tensor-based cryptographic system. It provides secure handshaking,
-encrypted data transmission, and network protocol simulation suitable for IPsec replacement.
+Features:
+- Quantum-resistant packet encryption/decryption
+- Adaptive routing with load balancing
+- Real-time network monitoring and analytics
+- Secure session management with forward secrecy
+- Multi-protocol support (TCP, UDP, ICMP, custom)
+- Hardware acceleration integration
+- Comprehensive QoS and traffic shaping
 """
 
-import numpy as np
 import socket
-import struct
 import threading
 import time
-import json
 import logging
-import queue
+import json
 import hashlib
-import hmac
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any, Union, Callable
-from dataclasses import dataclass, asdict
-from enum import Enum
 import secrets
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Tuple, Optional, Any, Union, Callable
+from enum import Enum
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+import struct
+import select
 import asyncio
-import ssl
-from collections import defaultdict, deque
+import ipaddress
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.backends import default_backend
+import numpy as np
+import psutil
+from concurrent.futures import ThreadPoolExecutor
+import queue
 
-# Import our crypto components
+# Import project modules
 from tensor_engine import TensorEncryptionEngine
-from ai_logic import AILogicGenerator
-from dictionary_manager import DynamicDictionaryManager
 from key_management import KeyManager, KeyType
+from dictionary_manager import DictionaryManager, DictionaryType
+from ai_logic import AILogicGenerator
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class PacketType(Enum):
-    """Network packet types for the protocol"""
-    HANDSHAKE_INIT = 0x01
-    HANDSHAKE_RESPONSE = 0x02
-    HANDSHAKE_COMPLETE = 0x03
-    DATA_ENCRYPTED = 0x10
-    DATA_BROADCAST = 0x11
-    KEY_ROTATION = 0x20
-    DICT_SYNC = 0x21
-    HEARTBEAT = 0x30
-    ERROR = 0xF0
-    DISCONNECT = 0xFF
-
-
-class SessionState(Enum):
-    """Session state machine states"""
-    IDLE = "idle"
-    HANDSHAKE_INITIATED = "handshake_initiated"
-    HANDSHAKE_RESPONDING = "handshake_responding"
-    ESTABLISHED = "established"
-    KEY_ROTATING = "key_rotating"
-    ERROR = "error"
-    TERMINATED = "terminated"
-
-
-class NetworkProtocol(Enum):
+class ProtocolType(Enum):
     """Supported network protocols"""
     TCP = "tcp"
     UDP = "udp"
-    SIMULATION = "simulation"
+    ICMP = "icmp"
+    RAW = "raw"
+    CUSTOM = "custom"
 
+class SessionState(Enum):
+    """Session connection states"""
+    INIT = "init"
+    HANDSHAKE = "handshake"
+    ESTABLISHED = "established"
+    CLOSING = "closing"
+    CLOSED = "closed"
+    ERROR = "error"
+
+class TrafficPriority(Enum):
+    """Traffic priority levels"""
+    REAL_TIME = "real_time"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    BACKGROUND = "background"
 
 @dataclass
-class NetworkPacket:
-    """Network packet structure"""
-    packet_type: PacketType
-    source_id: str
-    destination_id: str
+class SessionMetadata:
+    """Session connection metadata"""
     session_id: str
-    sequence_number: int
-    payload: bytes
-    timestamp: float
-    checksum: str
-    signature: Optional[bytes] = None
-
-
-@dataclass
-class SessionInfo:
-    """Session information and state"""
-    session_id: str
-    peer_device_id: str
+    source_ip: str
+    destination_ip: str
+    source_port: int
+    destination_port: int
+    protocol: ProtocolType
     state: SessionState
     created_at: datetime
     last_activity: datetime
-    tensor_key_id: str
-    ai_logic_data: Optional[np.ndarray]
+    bytes_sent: int
+    bytes_received: int
+    packets_sent: int
+    packets_received: int
+    encryption_level: str
+    session_key_id: str
     dictionary_id: str
-    sequence_number: int
-    peer_sequence: int
-    encryption_params: Dict[str, Any]
-    network_stats: Dict[str, int]
+    quality_metrics: Dict[str, float]
 
+@dataclass
+class RouterConfig:
+    """Router configuration parameters"""
+    interface_name: str
+    listen_ip: str
+    listen_port: int
+    max_connections: int
+    buffer_size: int
+    timeout_seconds: float
+    enable_encryption: bool
+    enable_compression: bool
+    security_level: str
+    traffic_shaping: bool
+    quality_of_service: bool
+    hardware_acceleration: bool
+
+@dataclass
+class PerformanceMetrics:
+    """Router performance metrics"""
+    total_sessions: int
+    active_sessions: int
+    packets_processed: int
+    bytes_processed: int
+    encryption_operations: int
+    decryption_operations: int
+    average_latency: float
+    error_count: int
+    cache_hits: int
+    cache_misses: int
+    network_throughput: float
 
 class RouterInterface:
     """
-    Network interface and protocol handler for tensor-based cryptography
+    Advanced Router Interface for Quantum-Resistant IPSec Alternative
     
-    Provides secure communication protocols, packet handling, session management,
-    and integration with router hardware for IPsec replacement functionality.
+    Features:
+    - Quantum-resistant packet encryption using tensor operations
+    - Adaptive routing with intelligent path selection
+    - Real-time network analytics and monitoring
+    - Secure session management with forward secrecy
+    - Multi-protocol support with hardware acceleration
+    - Comprehensive QoS and traffic shaping
     """
-    
+
+    # Packet header format (custom protocol)
+    PACKET_HEADER_FORMAT = '!BBHHLLQ'  # version, flags, length, session_id, timestamp, nonce
+    PACKET_HEADER_SIZE = struct.calcsize('!BBHHLLQ')
+
     def __init__(self,
-                 tensor_engine: TensorEncryptionEngine,
-                 ai_logic: AILogicGenerator,
-                 dict_manager: DynamicDictionaryManager,
+                 config: RouterConfig,
                  key_manager: KeyManager,
-                 device_id: str,
-                 listen_port: int = 8443,
-                 protocol: NetworkProtocol = NetworkProtocol.SIMULATION,
-                 max_connections: int = 100):
+                 dictionary_manager: DictionaryManager,
+                 tensor_engine: TensorEncryptionEngine,
+                 ai_logic_generator: AILogicGenerator):
         """
-        Initialize router interface
+        Initialize the Advanced Router Interface
         
         Args:
+            config: Router configuration
+            key_manager: Key management instance
+            dictionary_manager: Dictionary management instance
             tensor_engine: Tensor encryption engine
-            ai_logic: AI logic generator
-            dict_manager: Dictionary manager
-            key_manager: Key manager
-            device_id: Local device identifier
-            listen_port: Port to listen on
-            protocol: Network protocol to use
-            max_connections: Maximum concurrent connections
+            ai_logic_generator: AI logic generator
         """
-        self.tensor_engine = tensor_engine
-        self.ai_logic = ai_logic
-        self.dict_manager = dict_manager
-        self.key_manager = key_manager
-        self.device_id = device_id
-        self.listen_port = listen_port
-        self.protocol = protocol
-        self.max_connections = max_connections
         
-        # Initialize logging
-        self.logger = logging.getLogger(__name__)
+        self.config = config
+        self.key_manager = key_manager
+        self.dictionary_manager = dictionary_manager
+        self.tensor_engine = tensor_engine
+        self.ai_logic = ai_logic_generator
         
         # Session management
-        self.active_sessions = {}  # {session_id: SessionInfo}
-        self.peer_sessions = {}    # {peer_device_id: session_id}
+        self.sessions: Dict[str, SessionMetadata] = {}
         self.session_lock = threading.RLock()
         
         # Network components
-        self.server_socket = None
-        self.is_listening = False
-        self.connection_handlers = {}
-        self.message_handlers = {}
+        self.socket = None
+        self.listening = False
+        self.packet_queue = queue.Queue()
+        self.worker_threads = []
         
-        # Packet processing
-        self.packet_queue = queue.Queue(maxsize=1000)
-        self.outbound_queue = queue.Queue(maxsize=1000)
-        self.packet_processors = []
+        # Performance tracking
+        self.performance_metrics = PerformanceMetrics(0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 0.0)
+        self.start_time = time.time()
         
-        # Thread pool for handling connections
-        self.executor = ThreadPoolExecutor(
-            max_workers=max_connections, 
-            thread_name_prefix="router_handler"
-        )
-        
-        # Performance metrics
-        self.metrics = {
-            'packets_sent': 0,
-            'packets_received': 0,
-            'handshakes_completed': 0,
-            'sessions_established': 0,
-            'key_rotations': 0,
-            'encryption_operations': 0,
-            'decryption_operations': 0,
-            'network_errors': 0,
-            'bytes_transmitted': 0,
-            'bytes_received': 0
+        # Traffic shaping
+        self.traffic_queues = {
+            TrafficPriority.REAL_TIME: queue.Queue(),
+            TrafficPriority.HIGH: queue.Queue(),
+            TrafficPriority.MEDIUM: queue.Queue(),
+            TrafficPriority.LOW: queue.Queue(),
+            TrafficPriority.BACKGROUND: queue.Queue()
         }
         
-        # Protocol configuration
-        self.config = {
-            'handshake_timeout': 30.0,  # seconds
-            'session_timeout': 3600.0,  # 1 hour
-            'heartbeat_interval': 60.0,  # 1 minute
-            'max_packet_size': 65536,   # 64KB
-            'retry_attempts': 3,
-            'key_rotation_threshold': 1000000,  # 1MB of data
-            'compression_enabled': True,
-            'integrity_checking': True
-        }
+        # Thread management
+        self.thread_pool = ThreadPoolExecutor(max_workers=8)
+        self.background_tasks = {}
         
-        # Initialize message handlers
-        self._setup_message_handlers()
+        # Initialize network interface
+        self._initialize_network_interface()
         
-        # Network simulation components (for testing)
-        if protocol == NetworkProtocol.SIMULATION:
-            self.simulation_network = {}
-            self.simulation_latency = 0.001  # 1ms default latency
+        # Start background services
+        self._start_background_services()
         
-        self.logger.info(f"Router Interface initialized for device {device_id}")
-    
-    def _setup_message_handlers(self):
-        """Setup message type handlers"""
-        self.message_handlers = {
-            PacketType.HANDSHAKE_INIT: self._handle_handshake_init,
-            PacketType.HANDSHAKE_RESPONSE: self._handle_handshake_response,
-            PacketType.HANDSHAKE_COMPLETE: self._handle_handshake_complete,
-            PacketType.DATA_ENCRYPTED: self._handle_encrypted_data,
-            PacketType.DATA_BROADCAST: self._handle_broadcast_data,
-            PacketType.KEY_ROTATION: self._handle_key_rotation,
-            PacketType.DICT_SYNC: self._handle_dictionary_sync,
-            PacketType.HEARTBEAT: self._handle_heartbeat,
-            PacketType.ERROR: self._handle_error,
-            PacketType.DISCONNECT: self._handle_disconnect
-        }
-    
-    def start_listening(self) -> bool:
-        """
-        Start listening for incoming connections
-        
-        Returns:
-            Success status
-        """
+        logger.info(f"RouterInterface initialized on {config.interface_name} "
+                   f"({config.listen_ip}:{config.listen_port})")
+
+    def _initialize_network_interface(self):
+        """Initialize network socket and interface"""
         try:
-            if self.protocol == NetworkProtocol.SIMULATION:
-                # Simulation mode - no actual network socket
-                self.is_listening = True
-                self._start_packet_processors()
-                self.logger.info(f"Started simulation listener on device {self.device_id}")
-                return True
+            # Create raw socket for packet-level control
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+            self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
             
-            elif self.protocol == NetworkProtocol.TCP:
-                # Create TCP server socket
-                self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.server_socket.bind(('0.0.0.0', self.listen_port))
-                self.server_socket.listen(self.max_connections)
-                
-                self.is_listening = True
-                
-                # Start accepting connections
-                accept_thread = threading.Thread(
-                    target=self._accept_connections,
-                    daemon=True,
-                    name="connection_acceptor"
-                )
-                accept_thread.start()
-                
-                self._start_packet_processors()
-                
-                self.logger.info(f"Started TCP listener on port {self.listen_port}")
-                return True
+            # Set socket options for performance
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.config.buffer_size)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, self.config.buffer_size)
             
-            elif self.protocol == NetworkProtocol.UDP:
-                # Create UDP socket
-                self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self.server_socket.bind(('0.0.0.0', self.listen_port))
-                
-                self.is_listening = True
-                
-                # Start UDP receiver
-                udp_thread = threading.Thread(
-                    target=self._handle_udp_packets,
-                    daemon=True,
-                    name="udp_handler"
-                )
-                udp_thread.start()
-                
-                self._start_packet_processors()
-                
-                self.logger.info(f"Started UDP listener on port {self.listen_port}")
-                return True
+            # Bind to interface
+            self.socket.bind((self.config.listen_ip, self.config.listen_port))
+            
+            # Set non-blocking if using async
+            self.socket.setblocking(False)
+            
+            logger.info(f"Network interface initialized on {self.config.interface_name}")
             
         except Exception as e:
-            self.logger.error(f"Failed to start listener: {e}")
-            return False
-    
-    def stop_listening(self):
-        """Stop listening and close all connections"""
-        self.is_listening = False
+            logger.error(f"Failed to initialize network interface: {e}")
+            raise
+
+    def _start_background_services(self):
+        """Start background maintenance and monitoring services"""
+        def packet_processor():
+            """Background packet processing service"""
+            while self.listening:
+                try:
+                    # Process packets from all priority queues
+                    for priority in [TrafficPriority.REAL_TIME, TrafficPriority.HIGH, 
+                                   TrafficPriority.MEDIUM, TrafficPriority.LOW, 
+                                   TrafficPriority.BACKGROUND]:
+                        try:
+                            packet_data = self.traffic_queues[priority].get_nowait()
+                            self._process_packet(packet_data, priority)
+                        except queue.Empty:
+                            continue
+                    
+                    time.sleep(0.001)  # Small delay to prevent CPU spinning
+                    
+                except Exception as e:
+                    logger.error(f"Packet processor error: {e}")
+                    time.sleep(0.1)
+
+        def session_cleanup_service():
+            """Background session cleanup service"""
+            while self.listening:
+                try:
+                    self._cleanup_expired_sessions()
+                    time.sleep(30)  # Run every 30 seconds
+                except Exception as e:
+                    logger.error(f"Session cleanup error: {e}")
+                    time.sleep(60)
+
+        def performance_monitor_service():
+            """Background performance monitoring service"""
+            while self.listening:
+                try:
+                    self._update_performance_metrics()
+                    time.sleep(5)  # Update every 5 seconds
+                except Exception as e:
+                    logger.error(f"Performance monitor error: {e}")
+                    time.sleep(10)
+
+        # Start background threads
+        self.listening = True
         
-        if self.server_socket:
+        self.packet_processor_thread = threading.Thread(target=packet_processor, daemon=True)
+        self.session_cleanup_thread = threading.Thread(target=session_cleanup_service, daemon=True)
+        self.performance_monitor_thread = threading.Thread(target=performance_monitor_service, daemon=True)
+        
+        self.packet_processor_thread.start()
+        self.session_cleanup_thread.start()
+        self.performance_monitor_thread.start()
+        
+        logger.info("Background services started")
+
+    def start_listening(self):
+        """Start listening for incoming packets"""
+        def listener_thread():
+            """Main packet listener thread"""
+            while self.listening:
+                try:
+                    # Use select for non-blocking socket operations
+                    ready, _, _ = select.select([self.socket], [], [], 0.1)
+                    if ready:
+                        packet_data, address = self.socket.recvfrom(self.config.buffer_size)
+                        self._queue_packet(packet_data, address)
+                        
+                except socket.error as e:
+                    if e.errno != socket.EWOULDBLOCK:
+                        logger.error(f"Socket error in listener: {e}")
+                        time.sleep(0.1)
+                except Exception as e:
+                    logger.error(f"Listener thread error: {e}")
+                    time.sleep(0.1)
+
+        self.listener_thread = threading.Thread(target=listener_thread, daemon=True)
+        self.listener_thread.start()
+        
+        logger.info(f"Started listening on {self.config.listen_ip}:{self.config.listen_port}")
+
+    def _queue_packet(self, packet_data: bytes, address: Tuple[str, int]):
+        """Queue packet for processing based on priority"""
+        try:
+            # Determine packet priority (simplified - in reality would inspect packet content)
+            priority = self._determine_packet_priority(packet_data, address)
+            
+            # Add to appropriate queue
+            self.traffic_queues[priority].put((packet_data, address))
+            
+            self.performance_metrics.packets_processed += 1
+            self.performance_metrics.bytes_processed += len(packet_data)
+            
+        except Exception as e:
+            logger.error(f"Failed to queue packet: {e}")
+            self.performance_metrics.error_count += 1
+
+    def _determine_packet_priority(self, packet_data: bytes, address: Tuple[str, int]) -> TrafficPriority:
+        """Determine packet priority based on content and source"""
+        # Simplified priority determination
+        # In production, this would analyze packet headers and content
+        
+        if len(packet_data) < 100:  # Small packets often control packets
+            return TrafficPriority.REAL_TIME
+        
+        # Check if this is from an established session
+        source_ip, source_port = address
+        session_id = self._get_session_id(source_ip, source_port)
+        
+        if session_id and session_id in self.sessions:
+            session = self.sessions[session_id]
+            if session.state == SessionState.ESTABLISHED:
+                return TrafficPriority.HIGH
+        
+        return TrafficPriority.MEDIUM
+
+    def _process_packet(self, packet_data: Tuple[bytes, Tuple[str, int]], priority: TrafficPriority):
+        """Process incoming packet"""
+        packet, address = packet_data
+        start_time = time.time()
+        
+        try:
+            # Parse packet header
+            header_data = packet[:self.PACKET_HEADER_SIZE]
+            version, flags, length, session_id, timestamp, nonce = struct.unpack(
+                self.PACKET_HEADER_FORMAT, header_data
+            )
+            
+            # Extract payload
+            payload = packet[self.PACKET_HEADER_SIZE:self.PACKET_HEADER_SIZE + length]
+            
+            # Get or create session
+            source_ip, source_port = address
+            session = self._get_or_create_session(session_id, source_ip, source_port)
+            
+            if session:
+                # Update session activity
+                session.last_activity = datetime.now()
+                session.packets_received += 1
+                session.bytes_received += len(packet)
+                
+                # Decrypt payload if encrypted
+                if flags & 0x01:  # Encryption flag
+                    decrypted_payload = self._decrypt_packet(payload, session)
+                    self.performance_metrics.decryption_operations += 1
+                else:
+                    decrypted_payload = payload
+                
+                # Handle packet based on protocol and content
+                self._handle_packet_payload(decrypted_payload, session, address)
+                
+                # Update latency metrics
+                processing_time = time.time() - start_time
+                self._update_latency_metrics(processing_time)
+                
+            else:
+                logger.warning(f"No session found for packet from {address}")
+                
+        except Exception as e:
+            logger.error(f"Failed to process packet from {address}: {e}")
+            self.performance_metrics.error_count += 1
+
+    def _get_or_create_session(self, session_id: int, source_ip: str, source_port: int) -> Optional[SessionMetadata]:
+        """Get existing session or create new one"""
+        session_key = f"{source_ip}:{source_port}:{session_id}"
+        
+        with self.session_lock:
+            if session_key in self.sessions:
+                return self.sessions[session_key]
+            
+            # Create new session
             try:
-                self.server_socket.close()
-            except:
-                pass
+                # Generate session-specific resources
+                session_key_id, session_key_data = self.key_manager.derive_key(
+                    KeyType.SESSION,
+                    f"session_{session_key}",
+                    session_id=session_key
+                )
+                
+                # Create session dictionary
+                dictionary_id = self.dictionary_manager.create_dictionary(
+                    DictionaryType.SESSION,
+                    session_id=session_key,
+                    expiration_hours=24
+                )
+                
+                # Generate AI logic for session
+                logic_vector, logic_metadata = self.ai_logic.generate_session_logic(
+                    session_key,
+                    f"router_{self.config.interface_name}",
+                    additional_entropy=session_key_data
+                )
+                
+                # Store logic in dictionary
+                self.dictionary_manager.update_dictionary(
+                    dictionary_id,
+                    {"ai_logic": logic_vector.tolist(), "logic_metadata": asdict(logic_metadata)}
+                )
+                
+                # Create session metadata
+                session = SessionMetadata(
+                    session_id=session_key,
+                    source_ip=source_ip,
+                    destination_ip=self.config.listen_ip,
+                    source_port=source_port,
+                    destination_port=self.config.listen_port,
+                    protocol=ProtocolType.TCP,  # Default, would detect from packet
+                    state=SessionState.HANDSHAKE,
+                    created_at=datetime.now(),
+                    last_activity=datetime.now(),
+                    bytes_sent=0,
+                    bytes_received=0,
+                    packets_sent=0,
+                    packets_received=0,
+                    encryption_level=self.config.security_level,
+                    session_key_id=session_key_id,
+                    dictionary_id=dictionary_id,
+                    quality_metrics={}
+                )
+                
+                self.sessions[session_key] = session
+                self.performance_metrics.total_sessions += 1
+                self.performance_metrics.active_sessions += 1
+                
+                logger.info(f"Created new session: {session_key}")
+                return session
+                
+            except Exception as e:
+                logger.error(f"Failed to create session {session_key}: {e}")
+                return None
+
+    def _decrypt_packet(self, encrypted_payload: bytes, session: SessionMetadata) -> bytes:
+        """Decrypt packet payload using session keys and tensor engine"""
+        try:
+            # Get session dictionary
+            session_dict = self.dictionary_manager.get_dictionary(session.dictionary_id)
+            
+            # Get AI logic from dictionary
+            ai_logic_vector = np.array(session_dict["ai_logic"], dtype=np.int8)
+            logic_tensor = ai_logic_vector.reshape(self.tensor_engine.tensor_dims)
+            
+            # Get session key
+            session_key = self.key_manager.get_key(session.session_key_id)
+            
+            # Create metadata for decryption
+            metadata = {
+                'tensor_hash': hashlib.sha3_512(logic_tensor.tobytes()).hexdigest(),
+                'original_length': len(encrypted_payload),
+                'security_level': self.config.security_level
+            }
+            
+            # Decrypt payload
+            decrypted_payload = self.tensor_engine.decrypt_data(
+                encrypted_payload,
+                logic_tensor,
+                metadata
+            )
+            
+            return decrypted_payload
+            
+        except Exception as e:
+            logger.error(f"Failed to decrypt packet for session {session.session_id}: {e}")
+            raise
+
+    def _encrypt_packet(self, plaintext_payload: bytes, session: SessionMetadata) -> bytes:
+        """Encrypt packet payload using session keys and tensor engine"""
+        try:
+            # Get session dictionary
+            session_dict = self.dictionary_manager.get_dictionary(session.dictionary_id)
+            
+            # Get AI logic from dictionary
+            ai_logic_vector = np.array(session_dict["ai_logic"], dtype=np.int8)
+            logic_tensor = ai_logic_vector.reshape(self.tensor_engine.tensor_dims)
+            
+            # Encrypt payload
+            encrypted_payload, metadata = self.tensor_engine.encrypt_data(
+                plaintext_payload,
+                logic_tensor
+            )
+            
+            self.performance_metrics.encryption_operations += 1
+            
+            return encrypted_payload
+            
+        except Exception as e:
+            logger.error(f"Failed to encrypt packet for session {session.session_id}: {e}")
+            raise
+
+    def _handle_packet_payload(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle decrypted packet payload"""
+        try:
+            # Parse payload based on protocol (simplified)
+            # In production, this would handle various protocol types
+            
+            if session.protocol == ProtocolType.TCP:
+                self._handle_tcp_payload(payload, session, address)
+            elif session.protocol == ProtocolType.UDP:
+                self._handle_udp_payload(payload, session, address)
+            elif session.protocol == ProtocolType.ICMP:
+                self._handle_icmp_payload(payload, session, address)
+            else:
+                self._handle_custom_payload(payload, session, address)
+                
+        except Exception as e:
+            logger.error(f"Failed to handle packet payload for session {session.session_id}: {e}")
+
+    def _handle_tcp_payload(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle TCP protocol payload"""
+        # Simplified TCP handling - in production would implement full TCP state machine
+        try:
+            # Extract TCP header (simplified)
+            if len(payload) >= 20:  # Minimum TCP header size
+                # Parse basic TCP header fields
+                src_port = struct.unpack('!H', payload[0:2])[0]
+                dst_port = struct.unpack('!H', payload[2:4])[0]
+                seq_num = struct.unpack('!L', payload[4:8])[0]
+                ack_num = struct.unpack('!L', payload[8:12])[0]
+                
+                # Update session with port information
+                session.source_port = src_port
+                session.destination_port = dst_port
+                
+                # Handle TCP flags
+                flags = struct.unpack('!B', payload[13:14])[0]
+                
+                if flags & 0x02:  # SYN flag
+                    self._handle_syn(session, seq_num)
+                elif flags & 0x10:  # ACK flag
+                    self._handle_ack(session, ack_num)
+                elif flags & 0x01:  # FIN flag
+                    self._handle_fin(session)
+                else:
+                    # Data payload
+                    data_offset = (struct.unpack('!B', payload[12:13])[0] >> 4) * 4
+                    if len(payload) > data_offset:
+                        data = payload[data_offset:]
+                        self._handle_application_data(data, session, address)
+                        
+        except Exception as e:
+            logger.error(f"Failed to handle TCP payload: {e}")
+
+    def _handle_udp_payload(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle UDP protocol payload"""
+        try:
+            # Extract UDP header
+            if len(payload) >= 8:  # UDP header size
+                src_port = struct.unpack('!H', payload[0:2])[0]
+                dst_port = struct.unpack('!H', payload[2:4])[0]
+                length = struct.unpack('!H', payload[4:6])[0]
+                
+                # Update session
+                session.source_port = src_port
+                session.destination_port = dst_port
+                
+                # Extract data
+                if len(payload) > 8:
+                    data = payload[8:8+length]
+                    self._handle_application_data(data, session, address)
+                    
+        except Exception as e:
+            logger.error(f"Failed to handle UDP payload: {e}")
+
+    def _handle_icmp_payload(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle ICMP protocol payload"""
+        try:
+            # Extract ICMP header
+            if len(payload) >= 8:  # Basic ICMP header
+                icmp_type = struct.unpack('!B', payload[0:1])[0]
+                icmp_code = struct.unpack('!B', payload[1:2])[0]
+                
+                # Handle different ICMP types
+                if icmp_type == 8:  # Echo request
+                    self._handle_icmp_echo_request(payload, session, address)
+                elif icmp_type == 0:  # Echo reply
+                    self._handle_icmp_echo_reply(payload, session, address)
+                else:
+                    logger.debug(f"Unhandled ICMP type: {icmp_type}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to handle ICMP payload: {e}")
+
+    def _handle_custom_payload(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle custom protocol payload"""
+        try:
+            # Custom protocol handling would go here
+            # For now, just log and pass to application layer
+            self._handle_application_data(payload, session, address)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle custom payload: {e}")
+
+    def _handle_application_data(self, data: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle application layer data"""
+        try:
+            # In production, this would pass data to the appropriate application
+            # For this implementation, we'll just log and update metrics
+            
+            logger.debug(f"Application data from {address}: {len(data)} bytes")
+            
+            # Update session quality metrics
+            self._update_session_quality(session, len(data))
+            
+            # Could trigger callbacks for application-level processing
+            if hasattr(self, 'data_received_callback'):
+                self.data_received_callback(data, session, address)
+                
+        except Exception as e:
+            logger.error(f"Failed to handle application data: {e}")
+
+    def _handle_syn(self, session: SessionMetadata, seq_num: int):
+        """Handle TCP SYN packet"""
+        try:
+            if session.state == SessionState.INIT:
+                session.state = SessionState.HANDSHAKE
+                # Send SYN-ACK response
+                self._send_syn_ack(session, seq_num)
+                
+        except Exception as e:
+            logger.error(f"Failed to handle SYN: {e}")
+
+    def _handle_ack(self, session: SessionMetadata, ack_num: int):
+        """Handle TCP ACK packet"""
+        try:
+            if session.state == SessionState.HANDSHAKE:
+                session.state = SessionState.ESTABLISHED
+                logger.info(f"Session established: {session.session_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to handle ACK: {e}")
+
+    def _handle_fin(self, session: SessionMetadata):
+        """Handle TCP FIN packet"""
+        try:
+            session.state = SessionState.CLOSING
+            # Send FIN-ACK response
+            self._send_fin_ack(session)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle FIN: {e}")
+
+    def _handle_icmp_echo_request(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle ICMP echo request (ping)"""
+        try:
+            # Create echo reply
+            reply_payload = self._create_icmp_echo_reply(payload)
+            
+            # Send reply
+            self.send_packet(reply_payload, address, session)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle ICMP echo request: {e}")
+
+    def _handle_icmp_echo_reply(self, payload: bytes, session: SessionMetadata, address: Tuple[str, int]):
+        """Handle ICMP echo reply (pong)"""
+        try:
+            # Update latency metrics based on echo reply
+            timestamp = struct.unpack('!d', payload[8:16])[0]  # Assuming timestamp in payload
+            current_time = time.time()
+            latency = current_time - timestamp
+            
+            session.quality_metrics['latency'] = latency
+            self._update_latency_metrics(latency)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle ICMP echo reply: {e}")
+
+    def _create_icmp_echo_reply(self, request_payload: bytes) -> bytes:
+        """Create ICMP echo reply from request"""
+        try:
+            # Copy request payload
+            reply_payload = bytearray(request_payload)
+            
+            # Change type to Echo Reply (0)
+            reply_payload[0] = 0
+            
+            # Recalculate checksum
+            reply_payload[2:4] = b'\x00\x00'  # Clear checksum
+            checksum = self._calculate_checksum(reply_payload)
+            reply_payload[2:4] = struct.pack('!H', checksum)
+            
+            return bytes(reply_payload)
+            
+        except Exception as e:
+            logger.error(f"Failed to create ICMP echo reply: {e}")
+            raise
+
+    def _calculate_checksum(self, data: bytes) -> int:
+        """Calculate IP checksum"""
+        if len(data) % 2:
+            data += b'\x00'
+        
+        total = 0
+        for i in range(0, len(data), 2):
+            word = (data[i] << 8) + data[i+1]
+            total += word
+            total = (total & 0xffff) + (total >> 16)
+        
+        return ~total & 0xffff
+
+    def send_packet(self, payload: bytes, address: Tuple[str, int], session: Optional[SessionMetadata] = None):
+        """Send packet to specified address"""
+        try:
+            # Encrypt payload if session provided and encryption enabled
+            if session and self.config.enable_encryption:
+                encrypted_payload = self._encrypt_packet(payload, session)
+                flags = 0x01  # Set encryption flag
+            else:
+                encrypted_payload = payload
+                flags = 0x00
+            
+            # Create packet header
+            session_id = hash(session.session_id) % 65536 if session else 0
+            timestamp = int(time.time() * 1000)
+            nonce = secrets.randbits(64)
+            
+            header = struct.pack(
+                self.PACKET_HEADER_FORMAT,
+                1,  # version
+                flags,
+                len(encrypted_payload),
+                session_id,
+                timestamp,
+                nonce
+            )
+            
+            # Combine header and payload
+            packet = header + encrypted_payload
+            
+            # Send packet
+            self.socket.sendto(packet, address)
+            
+            # Update session metrics
+            if session:
+                session.packets_sent += 1
+                session.bytes_sent += len(packet)
+                session.last_activity = datetime.now()
+            
+            logger.debug(f"Sent packet to {address}: {len(packet)} bytes")
+            
+        except Exception as e:
+            logger.error(f"Failed to send packet to {address}: {e}")
+            self.performance_metrics.error_count += 1
+
+    def _send_syn_ack(self, session: SessionMetadata, seq_num: int):
+        """Send TCP SYN-ACK response"""
+        try:
+            # Create SYN-ACK packet
+            syn_ack_payload = self._create_tcp_packet(
+                session.destination_port,
+                session.source_port,
+                seq_num + 1,  # ACK number
+                0,  # SEQ number for our side
+                0x12  # SYN-ACK flags (SYN=0x02, ACK=0x10)
+            )
+            
+            # Send to source
+            address = (session.source_ip, session.source_port)
+            self.send_packet(syn_ack_payload, address, session)
+            
+        except Exception as e:
+            logger.error(f"Failed to send SYN-ACK: {e}")
+
+    def _send_fin_ack(self, session: SessionMetadata):
+        """Send TCP FIN-ACK response"""
+        try:
+            # Create FIN-ACK packet
+            fin_ack_payload = self._create_tcp_packet(
+                session.destination_port,
+                session.source_port,
+                0,  # ACK number
+                0,  # SEQ number
+                0x11  # FIN-ACK flags (FIN=0x01, ACK=0x10)
+            )
+            
+            # Send to source
+            address = (session.source_ip, session.source_port)
+            self.send_packet(fin_ack_payload, address, session)
+            
+        except Exception as e:
+            logger.error(f"Failed to send FIN-ACK: {e}")
+
+    def _create_tcp_packet(self, src_port: int, dst_port: int, ack_num: int, seq_num: int, flags: int) -> bytes:
+        """Create TCP packet with specified parameters"""
+        try:
+            # TCP header (simplified)
+            header = struct.pack('!HHLLBBHHH',
+                               src_port, dst_port,
+                               seq_num, ack_num,
+                               5 << 4,  # Data offset
+                               flags,
+                               8192,  # Window size
+                               0, 0)  # Checksum and urgent pointer
+            
+            return header
+            
+        except Exception as e:
+            logger.error(f"Failed to create TCP packet: {e}")
+            raise
+
+    def _update_session_quality(self, session: SessionMetadata, data_size: int):
+        """Update session quality metrics"""
+        try:
+            # Calculate various quality metrics
+            current_time = time.time()
+            session_duration = current_time - session.created_at.timestamp()
+            
+            throughput = session.bytes_received / session_duration if session_duration > 0 else 0
+            packet_loss = 1 - (session.packets_received / (session.packets_sent + 1))
+            
+            session.quality_metrics.update({
+                'throughput': throughput,
+                'packet_loss': packet_loss,
+                'data_size': data_size,
+                'session_duration': session_duration,
+                'last_update': current_time
+            })
+            
+        except Exception as e:
+            logger.warning(f"Failed to update session quality metrics: {e}")
+
+    def _update_latency_metrics(self, latency: float):
+        """Update overall latency metrics"""
+        try:
+            total_ops = self.performance_metrics.packets_processed
+            self.performance_metrics.average_latency = (
+                self.performance_metrics.average_latency * total_ops + latency
+            ) / (total_ops + 1)
+        except Exception as e:
+            logger.warning(f"Failed to update latency metrics: {e}")
+
+    def _update_performance_metrics(self):
+        """Update comprehensive performance metrics"""
+        try:
+            # Calculate network throughput
+            current_time = time.time()
+            time_elapsed = current_time - self.start_time
+            self.performance_metrics.network_throughput = (
+                self.performance_metrics.bytes_processed / time_elapsed
+            ) if time_elapsed > 0 else 0
+            
+            # Update active sessions count
+            with self.session_lock:
+                active_count = sum(1 for s in self.sessions.values() 
+                                 if s.state in [SessionState.ESTABLISHED, SessionState.HANDSHAKE])
+                self.performance_metrics.active_sessions = active_count
+            
+            # Log performance summary periodically
+            if int(current_time) % 30 == 0:  # Every 30 seconds
+                logger.info(f"Performance metrics: {self.get_performance_metrics()}")
+                
+        except Exception as e:
+            logger.error(f"Failed to update performance metrics: {e}")
+
+    def _cleanup_expired_sessions(self):
+        """Clean up expired and inactive sessions"""
+        try:
+            current_time = datetime.now()
+            expired_sessions = []
+            
+            with self.session_lock:
+                for session_id, session in self.sessions.items():
+                    # Check for inactive sessions (no activity for 5 minutes)
+                    time_since_activity = current_time - session.last_activity
+                    if time_since_activity > timedelta(minutes=5):
+                        expired_sessions.append(session_id)
+                    
+                    # Check for sessions in error state
+                    elif session.state == SessionState.ERROR:
+                        expired_sessions.append(session_id)
+            
+            # Remove expired sessions
+            for session_id in expired_sessions:
+                self._close_session(session_id, "inactive_timeout")
+                
+            if expired_sessions:
+                logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
+                
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired sessions: {e}")
+
+    def _close_session(self, session_id: str, reason: str = "normal"):
+        """Close session and cleanup resources"""
+        try:
+            with self.session_lock:
+                if session_id in self.sessions:
+                    session = self.sessions[session_id]
+                    
+                    # Update session state
+                    session.state = SessionState.CLOSED
+                    
+                    # Clean up cryptographic resources
+                    try:
+                        self.key_manager.revoke_key(session.session_key_id, f"session_closed_{reason}")
+                        self.dictionary_manager.delete_dictionary(session.dictionary_id, permanent=False)
+                    except Exception as e:
+                        logger.warning(f"Failed to cleanup session resources: {e}")
+                    
+                    # Remove from sessions dictionary
+                    del self.sessions[session_id]
+                    
+                    logger.info(f"Closed session {session_id}: {reason}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to close session {session_id}: {e}")
+
+    def get_session_info(self, session_id: str) -> Optional[SessionMetadata]:
+        """Get detailed session information"""
+        with self.session_lock:
+            return self.sessions.get(session_id)
+
+    def list_sessions(self, state_filter: Optional[SessionState] = None) -> List[SessionMetadata]:
+        """List all sessions with optional state filtering"""
+        with self.session_lock:
+            if state_filter:
+                return [s for s in self.sessions.values() if s.state == state_filter]
+            else:
+                return list(self.sessions.values())
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current performance metrics"""
+        metrics_dict = asdict(self.performance_metrics)
+        metrics_dict.update({
+            'uptime_seconds': time.time() - self.start_time,
+            'memory_usage_mb': psutil.Process().memory_info().rss / 1024 / 1024,
+            'cpu_percent': psutil.cpu_percent(),
+            'network_connections': len(self.sessions),
+            'config': asdict(self.config)
+        })
+        return metrics_dict
+
+    def set_data_received_callback(self, callback: Callable[[bytes, SessionMetadata, Tuple[str, int]], None]):
+        """Set callback for received application data"""
+        self.data_received_callback = callback
+
+    def shutdown(self):
+        """Gracefully shutdown the router interface"""
+        logger.info("Shutting down RouterInterface...")
+        
+        # Stop listening and background services
+        self.listening = False
         
         # Close all active sessions
         with self.session_lock:
-            for session_id in list(self.active_sessions.keys()):
-                self.terminate_session(session_id)
+            session_ids = list(self.sessions.keys())
+            for session_id in session_ids:
+                self._close_session(session_id, "shutdown")
         
-        # Shutdown executor
-        self.executor.shutdown(wait=True)
+        # Close socket
+        if self.socket:
+            self.socket.close()
         
-        self.logger.info("Router interface stopped")
-    
-    def _start_packet_processors(self):
-        """Start packet processing threads"""
-        # Input packet processor
-        processor_thread = threading.Thread(
-            target=self._packet_processor_worker,
-            daemon=True,
-            name="packet_processor"
-        )
-        processor_thread.start()
-        self.packet_processors.append(processor_thread)
+        # Shutdown thread pool
+        self.thread_pool.shutdown(wait=True)
         
-        # Output packet processor
-        sender_thread = threading.Thread(
-            target=self._packet_sender_worker,
-            daemon=True,
-            name="packet_sender"
-        )
-        sender_thread.start()
-        self.packet_processors.append(sender_thread)
-        
-        # Session maintenance
-        maintenance_thread = threading.Thread(
-            target=self._session_maintenance_worker,
-            daemon=True,
-            name="session_maintenance"
-        )
-        maintenance_thread.start()
-        self.packet_processors.append(maintenance_thread)
-    
-    def _accept_connections(self):
-        """Accept incoming TCP connections"""
-        while self.is_listening:
-            try:
-                client_socket, address = self.server_socket.accept()
-                
-                # Handle connection in thread pool
-                future = self.executor.submit(
-                    self._handle_tcp_connection, 
-                    client_socket, address
-                )
-                
-            except Exception as e:
-                if self.is_listening:  # Only log if we're still supposed to be listening
-                    self.logger.error(f"Error accepting connection: {e}")
-                break
-    
-    def _handle_tcp_connection(self, client_socket: socket.socket, address: Tuple[str, int]):
-        """Handle individual TCP connection"""
-        try:
-            self.logger.debug(f"New TCP connection from {address}")
-            
-            while True:
-                # Read packet header (fixed size)
-                header_data = self._receive_exact(client_socket, 32)  # 32-byte header
-                if not header_data:
-                    break
-                
-                # Parse header
-                packet_type, payload_size = struct.unpack('>BI', header_data[:5])
-                
-                # Read payload
-                if payload_size > self.config['max_packet_size']:
-                    self.logger.warning(f"Packet too large: {payload_size} bytes")
-                    break
-                
-                payload_data = self._receive_exact(client_socket, payload_size)
-                if not payload_data:
-                    break
-                
-                # Create packet and queue for processing
-                packet = self._deserialize_packet(header_data + payload_data)
-                if packet:
-                    self.packet_queue.put((packet, client_socket))
-                    self.metrics['packets_received'] += 1
-                    self.metrics['bytes_received'] += len(header_data) + len(payload_data)
-                
-        except Exception as e:
-            self.logger.error(f"TCP connection error with {address}: {e}")
-            self.metrics['network_errors'] += 1
-        finally:
-            try:
-                client_socket.close()
-            except:
-                pass
-    
-    def _handle_udp_packets(self):
-        """Handle UDP packet reception"""
-        while self.is_listening:
-            try:
-                data, address = self.server_socket.recvfrom(self.config['max_packet_size'])
-                
-                # Deserialize packet
-                packet = self._deserialize_packet(data)
-                if packet:
-                    self.packet_queue.put((packet, address))
-                    self.metrics['packets_received'] += 1
-                    self.metrics['bytes_received'] += len(data)
-                
-            except Exception as e:
-                if self.is_listening:
-                    self.logger.error(f"UDP reception error: {e}")
-                    self.metrics['network_errors'] += 1
-    
-    def _receive_exact(self, sock: socket.socket, size: int) -> Optional[bytes]:
-        """Receive exact number of bytes from socket"""
-        data = b''
-        while len(data) < size:
-            try:
-                chunk = sock.recv(size - len(data))
-                if not chunk:
-                    return None
-                data += chunk
-            except Exception as e:
-                self.logger.error(f"Socket receive error: {e}")
-                return None
-        return data
-    
-    def initiate_handshake(self, peer_device_id: str, 
-                          peer_address: Optional[Tuple[str, int]] = None) -> Optional[str]:
-        """
-        Initiate handshake with peer device
-        
-        Args:
-            peer_device_id: ID of peer device to connect to
-            peer_address: Network address of peer (for real network)
-            
-        Returns:
-            Session ID if successful, None otherwise
-        """
-        # Generate new session ID
-        session_id = self._generate_session_id(peer_device_id)
-        
-        # Create session info
-        session_info = SessionInfo(
-            session_id=session_id,
-            peer_device_id=peer_device_id,
-            state=SessionState.HANDSHAKE_INITIATED,
-            created_at=datetime.now(),
-            last_activity=datetime.now(),
-            tensor_key_id="",
-            ai_logic_data=None,
-            dictionary_id="",
-            sequence_number=1,
-            peer_sequence=0,
-            encryption_params={},
-            network_stats=defaultdict(int)
-        )
-        
-        # Store session
-        with self.session_lock:
-            self.active_sessions[session_id] = session_info
-            self.peer_sessions[peer_device_id] = session_id
-        
-        # Generate handshake payload
-        handshake_payload = self._create_handshake_init_payload(session_id)
-        
-        # Create and send handshake packet
-        packet = NetworkPacket(
-            packet_type=PacketType.HANDSHAKE_INIT,
-            source_id=self.device_id,
-            destination_id=peer_device_id,
-            session_id=session_id,
-            sequence_number=session_info.sequence_number,
-            payload=handshake_payload,
-            timestamp=time.time(),
-            checksum=""
-        )
-        
-        packet.checksum = self._calculate_packet_checksum(packet)
-        
-        # Send packet
-        success = self._send_packet(packet, peer_address)
-        
-        if success:
-            session_info.sequence_number += 1
-            self.logger.info(f"Handshake initiated with {peer_device_id}, session {session_id[:16]}...")
-            return session_id
-        else:
-            # Clean up failed session
-            with self.session_lock:
-                if session_id in self.active_sessions:
-                    del self.active_sessions[session_id]
-                if peer_device_id in self.peer_sessions:
-                    del self.peer_sessions[peer_device_id]
-            return None
-    
-    def _generate_session_id(self, peer_device_id: str) -> str:
-        """Generate unique session identifier"""
-        timestamp = int(time.time() * 1000000)
-        entropy = secrets.token_hex(8)
-        combined = f"{self.device_id}_{peer_device_id}_{timestamp}_{entropy}"
-        session_hash = hashlib.sha256(combined.encode()).hexdigest()[:32]
-        return f"session_{session_hash}"
-    
-    def _create_handshake_init_payload(self, session_id: str) -> bytes:
-        """Create handshake initialization payload"""
-        handshake_data = {
-            'protocol_version': '1.0',
-            'device_capabilities': {
-                'tensor_dimensions': self.tensor_engine.tensor_dims,
-                'security_level': self.tensor_engine.security_level,
-                'ai_logic_enabled': True,
-                'dictionary_sync': True
-            },
-            'supported_algorithms': ['tensor-xor', 'ai-enhanced', 'dict-lookup'],
-            'nonce': secrets.token_hex(32),
-            'timestamp': time.time()
-        }
-        
-        payload_json = json.dumps(handshake_data).encode('utf-8')
-        
-        # Add HMAC for integrity
-        key_id, hmac_key = self.key_manager.derive_key(
-            KeyType.EPHEMERAL, f'handshake_{session_id}'
-        )
-        
-        mac = hmac.new(hmac_key, payload_json, hashlib.sha256).digest()
-        
-        return payload_json + b'|HMAC|' + mac
-    
-    def _send_packet(self, packet: NetworkPacket, 
-                    destination: Optional[Tuple[str, int]] = None) -> bool:
-        """Send network packet"""
-        try:
-            # Serialize packet
-            packet_data = self._serialize_packet(packet)
-            
-            if self.protocol == NetworkProtocol.SIMULATION:
-                # Simulation mode
-                return self._simulate_packet_send(packet, packet_data)
-                
-            elif self.protocol == NetworkProtocol.UDP and destination:
-                # Send UDP packet
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.sendto(packet_data, destination)
-                sock.close()
-                
-            elif self.protocol == NetworkProtocol.TCP and destination:
-                # Send TCP packet
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect(destination)
-                sock.sendall(packet_data)
-                sock.close()
-            
-            # Update metrics
-            self.metrics['packets_sent'] += 1
-            self.metrics['bytes_transmitted'] += len(packet_data)
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to send packet: {e}")
-            self.metrics['network_errors'] += 1
-            return False
-    
-    def _simulate_packet_send(self, packet: NetworkPacket, packet_data: bytes) -> bool:
-        """Simulate packet transmission for testing"""
-        # Add simulated network latency
-        def delayed_delivery():
-            time.sleep(self.simulation_latency)
-            
-            # Check if destination exists in simulation network
-            if packet.destination_id in self.simulation_network:
-                peer_interface = self.simulation_network[packet.destination_id]
-                peer_interface.packet_queue.put((packet, None))
-        
-        # Schedule delayed delivery
-        threading.Thread(target=delayed_delivery, daemon=True).start()
-        return True
-    
-    def _serialize_packet(self, packet: NetworkPacket) -> bytes:
-        """Serialize packet for network transmission"""
-        # Packet header format:
-        # - packet_type (1 byte)
-        # - payload_size (4 bytes)
-        # - source_id_len (1 byte) + source_id (variable)
-        # - dest_id_len (1 byte) + dest_id (variable)
-        # - session_id_len (1 byte) + session_id (variable)
-        # - sequence_number (4 bytes)
-        # - timestamp (8 bytes)
-        # - checksum_len (1 byte) + checksum (variable)
-        # - payload (variable)
-        
-        payload = packet.payload
-        
-        header = struct.pack('>B', packet.packet_type.value)  # packet_type
-        header += struct.pack('>I', len(payload))  # payload_size
-        
-        # Source ID
-        source_bytes = packet.source_id.encode('utf-8')
-        header += struct.pack('>B', len(source_bytes)) + source_bytes
-        
-        # Destination ID
-        dest_bytes = packet.destination_id.encode('utf-8')
-        header += struct.pack('>B', len(dest_bytes)) + dest_bytes
-        
-        # Session ID
-        session_bytes = packet.session_id.encode('utf-8')
-        header += struct.pack('>B', len(session_bytes)) + session_bytes
-        
-        # Sequence number and timestamp
-        header += struct.pack('>I', packet.sequence_number)
-        header += struct.pack('>d', packet.timestamp)
-        
-        # Checksum
-        checksum_bytes = packet.checksum.encode('utf-8')
-        header += struct.pack('>B', len(checksum_bytes)) + checksum_bytes
-        
-        return header + payload
-    
-    def _deserialize_packet(self, data: bytes) -> Optional[NetworkPacket]:
-        """Deserialize packet from network data"""
-        try:
-            offset = 0
-            
-            # Parse header
-            packet_type = PacketType(struct.unpack('>B', data[offset:offset+1])[0])
-            offset += 1
-            
-            payload_size = struct.unpack('>I', data[offset:offset+4])[0]
-            offset += 4
-            
-            # Source ID
-            source_len = struct.unpack('>B', data[offset:offset+1])[0]
-            offset += 1
-            source_id = data[offset:offset+source_len].decode('utf-8')
-            offset += source_len
-            
-            # Destination ID
-            dest_len = struct.unpack('>B', data[offset:offset+1])[0]
-            offset += 1
-            destination_id = data[offset:offset+dest_len].decode('utf-8')
-            offset += dest_len
-            
-            # Session ID
-            session_len = struct.unpack('>B', data[offset:offset+1])[0]
-            offset += 1
-            session_id = data[offset:offset+session_len].decode('utf-8')
-            offset += session_len
-            
-            # Sequence and timestamp
-            sequence_number = struct.unpack('>I', data[offset:offset+4])[0]
-            offset += 4
-            timestamp = struct.unpack('>d', data[offset:offset+8])[0]
-            offset += 8
-            
-            # Checksum
-            checksum_len = struct.unpack('>B', data[offset:offset+1])[0]
-            offset += 1
-            checksum = data[offset:offset+checksum_len].decode('utf-8')
-            offset += checksum_len
-            
-            # Payload
-            payload = data[offset:offset+payload_size]
-            
-            packet = NetworkPacket(
-                packet_type=packet_type,
-                source_id=source_id,
-                destination_id=destination_id,
-                session_id=session_id,
-                sequence_number=sequence_number,
-                payload=payload,
-                timestamp=timestamp,
-                checksum=checksum
-            )
-            
-            return packet
-            
-        except Exception as e:
-            self.logger.error(f"Failed to deserialize packet: {e}")
-            return None
-    
-    def _calculate_packet_checksum(self, packet: NetworkPacket) -> str:
-        """Calculate packet checksum for integrity"""
-        checksum_data = (
-            packet.packet_type.value.to_bytes(1, 'big') +
-            packet.source_id.encode() +
-            packet.destination_id.encode() +
-            packet.session_id.encode() +
-            packet.sequence_number.to_bytes(4, 'big') +
-            packet.payload
-        )
-        
-        return hashlib.sha256(checksum_data).hexdigest()[:16]
-    
-    def _packet_processor_worker(self):
-        """Process incoming packets"""
-        while self.is_listening:
-            try:
-                # Get packet from queue with timeout
-                packet_info = self.packet_queue.get(timeout=1.0)
-                packet, connection_info = packet_info
-                
-                # Verify packet integrity
-                expected_checksum = self._calculate_packet_checksum(packet)
-                if packet.checksum != expected_checksum:
-                    self.logger.warning(f"Packet checksum mismatch from {packet.source_id}")
-                    continue
-                
-                # Route to appropriate handler
-                handler = self.message_handlers.get(packet.packet_type)
-                if handler:
-                    try:
-                        handler(packet, connection_info)
-                    except Exception as e:
-                        self.logger.error(f"Error handling {packet.packet_type}: {e}")
-                else:
-                    self.logger.warning(f"No handler for packet type {packet.packet_type}")
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                self.logger.error(f"Packet processor error: {e}")
-    
-    def _packet_sender_worker(self):
-        """Process outbound packet queue"""
-        while self.is_listening:
-            try:
-                # Get packet from outbound queue
-                packet_info = self.outbound_queue.get(timeout=1.0)
-                packet, destination = packet_info
-                
-                # Send packet
-                self._send_packet(packet, destination)
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                self.logger.error(f"Packet sender error: {e}")
-    
-    def _session_maintenance_worker(self):
-        """Maintain active sessions (heartbeat, timeouts, cleanup)"""
-        while self.is_listening:
-            try:
-                current_time = datetime.now()
-                sessions_to_remove = []
-                
-                with self.session_lock:
-                    for session_id, session_info in self.active_sessions.items():
-                        # Check for session timeout
-                        inactive_time = (current_time - session_info.last_activity).total_seconds()
-                        
-                        if inactive_time > self.config['session_timeout']:
-                            sessions_to_remove.append(session_id)
-                            continue
-                        
-                        # Send heartbeat if needed
-                        if (session_info.state == SessionState.ESTABLISHED and
-                            inactive_time > self.config['heartbeat_interval']):
-                            
-                            self._send_heartbeat(session_id)
-                        
-                        # Check for key rotation threshold
-                        bytes_sent = session_info.network_stats.get('bytes_sent', 0)
-                        if bytes_sent > self.config['key_rotation_threshold']:
-                            self._initiate_key_rotation(session_id)
-                
-                # Remove timed out sessions
-                for session_id in sessions_to_remove:
-                    self.terminate_session(session_id, reason="timeout")
-                
-                time.sleep(30)  # Check every 30 seconds
-                
-            except Exception as e:
-                self.logger.error(f"Session maintenance error: {e}")
-    
-    def _handle_handshake_init(self, packet: NetworkPacket, connection_info):
-        """Handle handshake initialization"""
-        try:
-            # Parse payload
-            payload_parts = packet.payload.split(b'|HMAC|')
-            if len(payload_parts) != 2:
-                self.logger.warning("Invalid handshake init payload format")
-                return
-            
-            payload_json, received_mac = payload_parts
-            handshake_data = json.loads(payload_json.decode('utf-8'))
-            
-            # Verify HMAC (simplified - in real implementation, would derive shared key)
-            # For now, we'll skip HMAC verification in simulation mode
-            
-            # Create session
-            session_info = SessionInfo(
-                session_id=packet.session_id,
-                peer_device_id=packet.source_id,
-                state=SessionState.HANDSHAKE_RESPONDING,
-                created_at=datetime.now(),
-                last_activity=datetime.now(),
-                tensor_key_id="",
-                ai_logic_data=None,
-                dictionary_id="",
-                sequence_number=1,
-                peer_sequence=packet.sequence_number,
-                encryption_params=handshake_data.get('device_capabilities', {}),
-                network_stats=defaultdict(int)
-            )
-            
-            # Store session
-            with self.session_lock:
-                self.active_sessions[packet.session_id] = session_info
-                self.peer_sessions[packet.source_id] = packet.session_id
-            
-            # Generate cryptographic components
-            self._setup_session_crypto(packet.session_id, packet.source_id)
-            
-            # Send handshake response
-            self._send_handshake_response(packet.session_id, packet.source_id)
-            
-            self.logger.info(f"Responding to handshake from {packet.source_id}")
-            
-        except Exception as e:
-            self.logger.error(f"Error handling handshake init: {e}")
-            self._send_error_packet(packet.source_id, packet.session_id, "handshake_failed")
-    
-    def _handle_handshake_response(self, packet: NetworkPacket, connection_info):
-        """Handle handshake response"""
-        try:
-            with self.session_lock:
-                session_info = self.active_sessions.get(packet.session_id)
-                if not session_info or session_info.state != SessionState.HANDSHAKE_INITIATED:
-                    self.logger.warning(f"Invalid handshake response for session {packet.session_id}")
-                    return
-                
-                # Update session state
-                session_info.state = SessionState.ESTABLISHED
-                session_info.last_activity = datetime.now()
-                session_info.peer_sequence = packet.sequence_number
-            
-            # Setup cryptographic components if not already done
-            if not session_info.tensor_key_id:
-                self._setup_session_crypto(packet.session_id, packet.source_id)
-            
-            # Send handshake completion
-            self._send_handshake_complete(packet.session_id, packet.source_id)
-            
-            self.metrics['handshakes_completed'] += 1
-            self.metrics['sessions_established'] += 1
-            
-            self.logger.info(f"Handshake completed with {packet.source_id}")
-            
-        except Exception as e:
-            self.logger.error(f"Error handling handshake response: {e}")
-    
-    def _handle_handshake_complete(self, packet: NetworkPacket, connection_info):
-        """Handle handshake completion"""
-        try:
-            with self.session_lock:
-                session_info = self.active_sessions.get(packet.session_id)
-                if not session_info:
-                    return
-                
-                session_info.state = SessionState.ESTABLISHED
-                session_info.last_activity = datetime.now()
-                session_info.peer_sequence = packet.sequence_number
-            
-            self.metrics['handshakes_completed'] += 1
-            self.metrics['sessions_established'] += 1
-            
-            self.logger.info(f"Session established with {packet.source_id}")
-            
-        except Exception as e:
-            self.logger.error(f"Error handling handshake complete: {e}")
-    
-    def _setup_session_crypto(self, session_id: str, peer_device_id: str):
-        """Setup cryptographic components for session"""
-        with self.session_lock:
-            session_info = self.active_sessions.get(session_id)
-            if not session_info:
-                return
-            
-            try:
-                # Generate tensor key
-                tensor_key_id, tensor_key = self.key_manager.derive_key(
-                    KeyType.TENSOR, 
-                    f'session_tensor_{session_id}',
-                    session_id=session_id
-                )
-                session_info.tensor_key_id = tensor_key_id
-                
-                # Generate AI logic
-                ai_logic, ai_metadata = self.ai_logic.generate_session_logic(
-                    session_id, peer_device_id
-                )
-                session_info.ai_logic_data = ai_logic
-                
-                # Generate shared dictionary
-                dict_id, dictionary = self.dict_manager.generate_shared_dictionary(
-                    peer_device_id, session_id
-                )
-                session_info.dictionary_id = dict_id
-                
-                self.logger.debug(f"Crypto setup completed for session {session_id[:16]}...")
-                
-            except Exception as e:
-                self.logger.error(f"Failed to setup session crypto: {e}")
-                session_info.state = SessionState.ERROR
-    
-    def _send_handshake_response(self, session_id: str, peer_device_id: str):
-        """Send handshake response packet"""
-        response_data = {
-            'status': 'accepted',
-            'device_capabilities': {
-                'tensor_dimensions': self.tensor_engine.tensor_dims,
-                'security_level': self.tensor_engine.security_level
-            },
-            'timestamp': time.time()
-        }
-        
-        payload = json.dumps(response_data).encode('utf-8')
-        
-        with self.session_lock:
-            session_info = self.active_sessions[session_id]
-            
-            packet = NetworkPacket(
-                packet_type=PacketType.HANDSHAKE_RESPONSE,
-                source_id=self.device_id,
-                destination_id=peer_device_id,
-                session_id=session_id,
-                sequence_number=session_info.sequence_number,
-                payload=payload,
-                timestamp=time.time(),
-                checksum=""
-            )
-            
-            packet.checksum = self._calculate_packet_checksum(packet)
-            session_info.sequence_number += 1
-        
-        # Queue for sending
-        self.outbound_queue.put((packet, None))
-    
-    def _send_handshake_complete(self, session_id: str, peer_device_id: str):
-        """Send handshake completion packet"""
-        complete_data = {
-            'status': 'established',
-            'timestamp': time.time()
-        }
-        
-        payload = json.dumps(complete_data).encode('utf-8')
-        
-        with self.session_lock:
-            session_info = self.active_sessions[session_id]
-            
-            packet = NetworkPacket(
-                packet_type=PacketType.HANDSHAKE_COMPLETE,
-                source_id=self.device_id,
-                destination_id=peer_device_id,
-                session_id=session_id,
-                sequence_number=session_info.sequence_number,
-                payload=payload,
-                timestamp=time.time(),
-                checksum=""
-            )
-            
-            packet.checksum = self._calculate_packet_checksum(packet)
-            session_info.sequence_number += 1
-        
-        self.outbound_queue.put((packet, None))
-    
-    def send_encrypted_data(self, session_id: str, data: bytes) -> bool:
-        """
-        Send encrypted data through established session
-        
-        Args:
-            session_id: Session to send data through
-            data: Data to encrypt and send
-            
-        Returns:
-            Success status
-        """
-        with self.session_lock:
-            session_info = self.active_sessions.get(session_id)
-            if not session_info or session_info.state != SessionState.ESTABLISHED:
-                return False
-            
-            try:
-                # Get session tensor key
-                tensor_key = self.key_manager.get_key(session_info.tensor_key_id)
-                
-                # Reshape tensor key for encryption
-                tensor_key_reshaped = np.frombuffer(tensor_key, dtype=np.uint8)
-                tensor_key_reshaped = tensor_key_reshaped[:np.prod(self.tensor_engine.tensor_dims)]
-                tensor_key_reshaped = tensor_key_reshaped.reshape(self.tensor_engine.tensor_dims)
-                
-                # Encrypt data
-                encrypted_data, metadata = self.tensor_engine.encrypt_data(
-                    data, tensor_key_reshaped
-                )
-                
-                # Enhance with AI logic
-                if session_info.ai_logic_data is not None:
-                    ai_logic_tensor = session_info.ai_logic_data.reshape(self.tensor_engine.tensor_dims)
-                    # Additional XOR with AI logic (simplified)
-                    encrypted_enhanced = np.bitwise_xor(
-                        np.frombuffer(encrypted_data, dtype=np.uint8)[:len(encrypted_data)],
-                        np.tile(ai_logic_tensor.flatten().astype(np.uint8), 
-                               (len(encrypted_data) // ai_logic_tensor.size) + 1)[:len(encrypted_data)]
-                    )
-                    encrypted_data = encrypted_enhanced.tobytes()
-                
-                # Create encrypted packet
-                packet = NetworkPacket(
-                    packet_type=PacketType.DATA_ENCRYPTED,
-                    source_id=self.device_id,
-                    destination_id=session_info.peer_device_id,
-                    session_id=session_id,
-                    sequence_number=session_info.sequence_number,
-                    payload=encrypted_data,
-                    timestamp=time.time(),
-                    checksum=""
-                )
-                
-                packet.checksum = self._calculate_packet_checksum(packet)
-                
-                # Update session stats
-                session_info.sequence_number += 1
-                session_info.last_activity = datetime.now()
-                session_info.network_stats['bytes_sent'] += len(encrypted_data)
-                
-                # Queue for sending
-                self.outbound_queue.put((packet, None))
-                
-                self.metrics['encryption_operations'] += 1
-                
-                return True
-                
-            except Exception as e:
-                self.logger.error(f"Failed to send encrypted data: {e}")
-                return False
-    
-    def _handle_encrypted_data(self, packet: NetworkPacket, connection_info):
-        """Handle encrypted data packet"""
-        try:
-            with self.session_lock:
-                session_info = self.active_sessions.get(packet.session_id)
-                if not session_info or session_info.state != SessionState.ESTABLISHED:
-                    return
-                
-                # Get decryption key
-                tensor_key = self.key_manager.get_key(session_info.tensor_key_id)
-                tensor_key_reshaped = np.frombuffer(tensor_key, dtype=np.uint8)
-                tensor_key_reshaped = tensor_key_reshaped[:np.prod(self.tensor_engine.tensor_dims)]
-                tensor_key_reshaped = tensor_key_reshaped.reshape(self.tensor_engine.tensor_dims)
-                
-                encrypted_data = packet.payload
-                
-                # Reverse AI logic enhancement
-                if session_info.ai_logic_data is not None:
-                    ai_logic_tensor = session_info.ai_logic_data.reshape(self.tensor_engine.tensor_dims)
-                    encrypted_original = np.bitwise_xor(
-                        np.frombuffer(encrypted_data, dtype=np.uint8),
-                        np.tile(ai_logic_tensor.flatten().astype(np.uint8), 
-                               (len(encrypted_data) // ai_logic_tensor.size) + 1)[:len(encrypted_data)]
-                    )
-                    encrypted_data = encrypted_original.tobytes()
-                
-                # Decrypt data
-                # Create minimal metadata for decryption
-                decrypt_metadata = {
-                    'nonce': os.urandom(16),  # Simplified - should be from encryption
-                    'original_length': len(encrypted_data),
-                    'tensor_hash': hashlib.sha256(tensor_key_reshaped.tobytes()).hexdigest(),
-                    'tensor_dimensions': self.tensor_engine.tensor_dims
-                }
-                
-                # For demo purposes, we'll simulate decryption
-                # In real implementation, this would use proper metadata
-                decrypted_data = self._simulate_decrypt(encrypted_data, tensor_key_reshaped)
-                
-                # Update session stats
-                session_info.last_activity = datetime.now()
-                session_info.peer_sequence = packet.sequence_number
-                session_info.network_stats['bytes_received'] += len(encrypted_data)
-                
-                self.metrics['decryption_operations'] += 1
-                
-                # Process decrypted data (could trigger callbacks)
-                self._process_decrypted_data(packet.session_id, decrypted_data)
-                
-        except Exception as e:
-            self.logger.error(f"Failed to handle encrypted data: {e}")
-    
-    def _simulate_decrypt(self, encrypted_data: bytes, tensor_key: np.ndarray) -> bytes:
-        """Simulate decryption for demo purposes"""
-        # This is a simplified decryption simulation
-        # In real implementation, would use proper tensor decryption
-        data_array = np.frombuffer(encrypted_data, dtype=np.uint8)
-        key_pattern = np.tile(tensor_key.flatten().astype(np.uint8), 
-                             (len(data_array) // tensor_key.size) + 1)[:len(data_array)]
-        decrypted_array = np.bitwise_xor(data_array, key_pattern)
-        return decrypted_array.tobytes()
-    
-    def _process_decrypted_data(self, session_id: str, data: bytes):
-        """Process successfully decrypted data"""
-        # In a real implementation, this would route data to appropriate handlers
-        self.logger.debug(f"Received {len(data)} bytes of decrypted data in session {session_id[:16]}...")
-    
-    def _handle_heartbeat(self, packet: NetworkPacket, connection_info):
-        """Handle heartbeat packet"""
-        with self.session_lock:
-            session_info = self.active_sessions.get(packet.session_id)
-            if session_info:
-                session_info.last_activity = datetime.now()
-                session_info.peer_sequence = packet.sequence_number
-    
-    def _send_heartbeat(self, session_id: str):
-        """Send heartbeat packet"""
-        with self.session_lock:
-            session_info = self.active_sessions.get(session_id)
-            if not session_info:
-                return
-            
-            packet = NetworkPacket(
-                packet_type=PacketType.HEARTBEAT,
-                source_id=self.device_id,
-                destination_id=session_info.peer_device_id,
-                session_id=session_id,
-                sequence_number=session_info.sequence_number,
-                payload=b'ping',
-                timestamp=time.time(),
-                checksum=""
-            )
-            
-            packet.checksum = self._calculate_packet_checksum(packet)
-            session_info.sequence_number += 1
-            session_info.last_activity = datetime.now()
-        
-        self.outbound_queue.put((packet, None))
-    
-    def _handle_key_rotation(self, packet: NetworkPacket, connection_info):
-        """Handle key rotation packet"""
-        # Implementation for handling key rotation requests
-        pass
-    
-    def _handle_dictionary_sync(self, packet: NetworkPacket, connection_info):
-        """Handle dictionary synchronization packet"""
-        # Implementation for dictionary sync
-        pass
-    
-    def _handle_error(self, packet: NetworkPacket, connection_info):
-        """Handle error packet"""
-        self.logger.warning(f"Received error from {packet.source_id}: {packet.payload.decode('utf-8')}")
-    
-    def _handle_disconnect(self, packet: NetworkPacket, connection_info):
-        """Handle disconnect packet"""
-        self.terminate_session(packet.session_id, reason="peer_disconnect")
-    
-    def _send_error_packet(self, destination: str, session_id: str, error_message: str):
-        """Send error packet"""
-        packet = NetworkPacket(
-            packet_type=PacketType.ERROR,
-            source_id=self.device_id,
-            destination_id=destination,
-            session_id=session_id,
-            sequence_number=0,
-            payload=error_message.encode('utf-8'),
-            timestamp=time.time(),
-            checksum=""
-        )
-        
-        packet.checksum = self._calculate_packet_checksum(packet)
-        self.outbound_queue.put((packet, None))
-    
-    def _initiate_key_rotation(self, session_id: str):
-        """Initiate key rotation for session"""
-        # Implementation for initiating key rotation
-        with self.session_lock:
-            session_info = self.active_sessions.get(session_id)
-            if session_info:
-                session_info.state = SessionState.KEY_ROTATING
-                # Reset byte counter
-                session_info.network_stats['bytes_sent'] = 0
-                self.metrics['key_rotations'] += 1
-    
-    def terminate_session(self, session_id: str, reason: str = "manual"):
-        """
-        Terminate active session
-        
-        Args:
-            session_id: Session to terminate
-            reason: Reason for termination
-        """
-        with self.session_lock:
-            session_info = self.active_sessions.get(session_id)
-            if not session_info:
-                return
-            
-            # Send disconnect packet
-            if session_info.state != SessionState.ERROR:
-                disconnect_packet = NetworkPacket(
-                    packet_type=PacketType.DISCONNECT,
-                    source_id=self.device_id,
-                    destination_id=session_info.peer_device_id,
-                    session_id=session_id,
-                    sequence_number=session_info.sequence_number,
-                    payload=reason.encode('utf-8'),
-                    timestamp=time.time(),
-                    checksum=""
-                )
-                
-                disconnect_packet.checksum = self._calculate_packet_checksum(disconnect_packet)
-                self.outbound_queue.put((disconnect_packet, None))
-            
-            # Clean up session
-            peer_device_id = session_info.peer_device_id
-            
-            del self.active_sessions[session_id]
-            if peer_device_id in self.peer_sessions:
-                del self.peer_sessions[peer_device_id]
-            
-            self.logger.info(f"Session {session_id[:16]}... terminated ({reason})")
-    
-    def get_session_info(self, session_id: str) -> Optional[SessionInfo]:
-        """Get session information"""
-        with self.session_lock:
-            return self.active_sessions.get(session_id)
-    
-    def list_active_sessions(self) -> List[SessionInfo]:
-        """List all active sessions"""
-        with self.session_lock:
-            return list(self.active_sessions.values())
-    
-    def connect_simulation_peer(self, peer_interface: 'RouterInterface'):
-        """Connect to peer in simulation mode"""
-        if self.protocol == NetworkProtocol.SIMULATION:
-            self.simulation_network[peer_interface.device_id] = peer_interface
-            peer_interface.simulation_network[self.device_id] = self
-            self.logger.info(f"Connected to simulation peer {peer_interface.device_id}")
-    
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get router interface metrics"""
-        with self.session_lock:
-            return {
-                **self.metrics,
-                'active_sessions': len(self.active_sessions),
-                'is_listening': self.is_listening,
-                'protocol': self.protocol.value,
-                'listen_port': self.listen_port,
-                'queue_sizes': {
-                    'inbound': self.packet_queue.qsize(),
-                    'outbound': self.outbound_queue.qsize()
-                }
-            }
-    
+        logger.info("RouterInterface shutdown completed")
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.shutdown()
+
     def __repr__(self) -> str:
-        """String representation"""
-        return (f"RouterInterface(device_id='{self.device_id}', "
-                f"protocol={self.protocol.value}, "
-                f"sessions={len(self.active_sessions)}, "
-                f"listening={self.is_listening})")
+        """String representation of the router interface"""
+        return (f"RouterInterface(interface='{self.config.interface_name}', "
+                f"ip='{self.config.listen_ip}:{self.config.listen_port}', "
+                f"sessions={len(self.sessions)}, "
+                f"throughput={self.performance_metrics.network_throughput:.2f} B/s)")
+
+# Utility functions
+def create_router_interface(interface_name: str,
+                          listen_ip: str = "0.0.0.0",
+                          listen_port: int = 0,
+                          security_level: str = "high") -> RouterInterface:
+    """
+    Create a pre-configured router interface
+    
+    Args:
+        interface_name: Network interface name
+        listen_ip: IP address to listen on
+        listen_port: Port to listen on (0 for auto)
+        security_level: Security level ('basic', 'standard', 'high', 'quantum')
+        
+    Returns:
+        Configured RouterInterface instance
+    """
+    
+    # Create configuration
+    config = RouterConfig(
+        interface_name=interface_name,
+        listen_ip=listen_ip,
+        listen_port=listen_port,
+        max_connections=1000,
+        buffer_size=65536,
+        timeout_seconds=30.0,
+        enable_encryption=True,
+        enable_compression=True,
+        security_level=security_level,
+        traffic_shaping=True,
+        quality_of_service=True,
+        hardware_acceleration=False
+    )
+    
+    # Create dependent components
+    key_manager = KeyManager(
+        db_path=f"keys_router_{interface_name}.db",
+        device_id=f"router_{interface_name}",
+        security_level=security_level
+    )
+    
+    dictionary_manager = DictionaryManager(
+        db_path=f"dict_router_{interface_name}.db",
+        device_id=f"router_{interface_name}",
+        security_level=security_level
+    )
+    
+    tensor_engine = TensorEncryptionEngine(
+        tensor_dimensions=(8, 8),
+        security_level=security_level
+    )
+    
+    ai_logic = AILogicGenerator(
+        input_dim=64,
+        output_dim=64,
+        architecture='advanced',
+        security_level=security_level
+    )
+    
+    return RouterInterface(config, key_manager, dictionary_manager, tensor_engine, ai_logic)
+
+def validate_ip_address(ip: str) -> bool:
+    """
+    Validate IP address format
+    
+    Args:
+        ip: IP address to validate
+        
+    Returns:
+        Validation result
+    """
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
+
+def get_network_interfaces() -> List[Dict[str, Any]]:
+    """
+    Get available network interfaces
+    
+    Returns:
+        List of interface information
+    """
+    interfaces = []
+    try:
+        for interface, addrs in psutil.net_if_addrs().items():
+            interface_info = {
+                'name': interface,
+                'addresses': [],
+                'stats': psutil.net_if_stats().get(interface, {})
+            }
+            
+            for addr in addrs:
+                interface_info['addresses'].append({
+                    'family': addr.family.name,
+                    'address': addr.address,
+                    'netmask': addr.netmask,
+                    'broadcast': addr.broadcast
+                })
+            
+            interfaces.append(interface_info)
+            
+    except Exception as e:
+        logger.error(f"Failed to get network interfaces: {e}")
+    
+    return interfaces
