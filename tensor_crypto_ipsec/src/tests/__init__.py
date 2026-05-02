@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import pytest
+import numpy as np
 
 # Add src to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -41,19 +42,6 @@ class TestUtils:
         assert not np.all(tensor == 0), "Tensor should not contain all zeros"
 
 # Import all test modules
-from .test_ai_logic import TestAILogicGenerator, TestAILogicIntegration
-from .test_key_management import TestKeyManager, TestKeyManagerIntegration
-from .test_tensor_engine import TestTensorEncryptionEngine, TestTensorEngineEdgeCases
-from .test_dictionary_manager import TestDictionaryManager, TestDictionaryIntegration
-from .test_router_interface import TestRouterInterface, TestRouterIntegration
-from .test_utils import TestCryptoUtils, TestPerformanceMonitor, TestSecurityAuditor
-
 __all__ = [
-    'TestUtils', 'TEST_CONFIG',
-    'TestAILogicGenerator', 'TestAILogicIntegration',
-    'TestKeyManager', 'TestKeyManagerIntegration', 
-    'TestTensorEncryptionEngine', 'TestTensorEngineEdgeCases',
-    'TestDictionaryManager', 'TestDictionaryIntegration',
-    'TestRouterInterface', 'TestRouterIntegration',
-    'TestCryptoUtils', 'TestPerformanceMonitor', 'TestSecurityAuditor'
+    'TestUtils', 'TEST_CONFIG'
 ]

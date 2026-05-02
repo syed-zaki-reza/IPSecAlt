@@ -5,11 +5,7 @@ name = "pypi"
 
 [packages]
 jupyter = "*"
-numpy = "*"
-tensorflow = "*"
 torch = "*"
-scipy = "*"
-cryptography = "*"
 pandas = "*"
 scikit-learn = "*"
 matplotlib = "*"
@@ -22,11 +18,10 @@ black = "*"
 flake8 = "*"
 mypy = "*"
 types-cryptography = "*"
-numba = "*"
-sympy = "*"
 networkx = "*"
-psutil = "*"
 memory-profiler = "*"
+cryptography = "*"
+gputil = "*"
 
 [dev-packages]
 

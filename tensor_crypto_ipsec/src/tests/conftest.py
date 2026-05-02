@@ -8,15 +8,18 @@ import tempfile
 import os
 import sys
 from typing import Dict, Any, Generator
+import numpy as np
 
 # Add src to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src import (
-    AILogicGenerator, KeyManager, TensorEncryptionEngine,
-    DictionaryManager, RouterInterface, CryptoUtils,
-    PerformanceMonitor, SecurityAuditor, SecurityLevel
-)
+from src.ai_logic import AILogicGenerator
+from src.key_management import KeyManager
+from src.tensor_engine import TensorEncryptionEngine
+from src.dictionary_manager import DictionaryManager
+from src.router_interface import RouterInterface, RouterConfig
+from src.utils import CryptoUtils, PerformanceMonitor, SecurityAuditor, DataUtils, ErrorHandler
+from src.security_types import SecurityLevel, DictionaryType, SessionState
 
 @pytest.fixture(scope="session")
 def test_config() -> Dict[str, Any]:
@@ -42,6 +45,16 @@ def temp_db_path() -> Generator[str, None, None]:
 def crypto_utils() -> CryptoUtils:
     """Create CryptoUtils instance"""
     return CryptoUtils(security_level=SecurityLevel.HIGH)
+
+@pytest.fixture
+def data_utils() -> DataUtils:
+    """Create DataUtils instance"""
+    return DataUtils()
+
+@pytest.fixture
+def error_handler() -> ErrorHandler:
+    """Create ErrorHandler instance"""
+    return ErrorHandler(max_retries=3, base_delay=0.1)
 
 @pytest.fixture
 def ai_logic_generator() -> AILogicGenerator:
@@ -98,6 +111,24 @@ def security_auditor() -> SecurityAuditor:
     return SecurityAuditor(security_level=SecurityLevel.HIGH)
 
 @pytest.fixture
+def router_config() -> RouterConfig:
+    """Create router configuration"""
+    return RouterConfig(
+        interface_name='test_interface',
+        listen_ip='127.0.0.1',
+        listen_port=0,
+        max_connections=10,
+        buffer_size=8192,
+        timeout_seconds=30.0,
+        enable_encryption=True,
+        enable_compression=True,
+        security_level='high',
+        traffic_shaping=True,
+        quality_of_service=True,
+        hardware_acceleration=False
+    )
+
+@pytest.fixture
 def sample_session_data() -> Dict[str, Any]:
     """Provide sample session data for testing"""
     return {
@@ -116,6 +147,11 @@ def sample_encryption_data() -> Dict[str, Any]:
         'device_fingerprint': 'test_device_encryption'
     }
 
+@pytest.fixture
+def sample_tensor_data() -> np.ndarray:
+    """Provide sample tensor data for testing"""
+    return np.random.randint(0, 255, size=(8, 8), dtype=np.uint8)
+
 # Custom pytest markers
 def pytest_configure(config):
     """Register custom markers"""
@@ -130,4 +166,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "performance: mark test as performance sensitive"
+    )
+    config.addinivalue_line(
+        "markers", "quantum: mark test as quantum security related"
     )
